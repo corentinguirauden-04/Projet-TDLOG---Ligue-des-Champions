@@ -94,7 +94,7 @@ def lambdas(team1: str, team2: str, field: int = 0) -> tuple[float, float]:
     raise ValueError("field doit valoir 0, 1 ou 2")
 
 
-def match(team1 : str, team2 : str, field = 0) -> (float, float):
+def match(team1 : str, team2 : str, field = 0) -> tuple[float, float]:
 
     lam_a, lam_b = lambdas(team1, team2, field)
 
@@ -109,15 +109,16 @@ def match(team1 : str, team2 : str, field = 0) -> (float, float):
 TEST DE COHERENCE
 """
 
-print(ELO["PSG"])
-print(win_exp(ELO["PSG"], ELO["Real Madrid"]))
-print(win_exp(ELO["Real Madrid"], ELO["PSG"]))
+print("Elo de PSG :", ELO["PSG"])
+print("Elo de Real Madrid :", ELO["Real Madrid"])
+print("Probabilité de victoire de PSG :", win_exp(ELO["PSG"], ELO["Real Madrid"]))
+print("Probabilité de victoire de Real Madrid :", win_exp(ELO["Real Madrid"], ELO["PSG"]))
 
 
 D = []
 P = []
 M = []
-field = 1
+field = 0
 for k in range(100000):
     
     a, b = match("PSG", "Real Madrid", field)
@@ -127,8 +128,8 @@ for k in range(100000):
         M.append(1)
     D.append(a-b)
 
-print(np.mean(D))
-print(len(P)/100000)
-print(len(M)/100000)
+print("Différence de buts moyenne (PSG - Real Madrid, terrain neutre) :", np.mean(D))
+print("Fréquence de victoire du PSG terrain neutre (hors matchs nuls) :", len(P)/100000)
+print("Fréquence de victoire du Real Madrid terrain neutre (hors matchs nuls) :", len(M)/100000)
 
 print("FIN")

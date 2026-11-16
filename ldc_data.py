@@ -19,6 +19,8 @@ ELO = {
     "Stuttgart": 1819,  # <-- PLACEHOLDER
 }
 
+DEFAULT_ELO = dict(ELO)
+
 # Si elo.json existe (créé par ldc_elo.py à partir de ClubElo), il remplace les valeurs ci-dessus.
 import json as _json
 import os as _os

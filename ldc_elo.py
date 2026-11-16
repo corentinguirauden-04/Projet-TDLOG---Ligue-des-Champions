@@ -24,6 +24,7 @@ Dépendances : bibliothèque standard Python uniquement.
 
 from __future__ import annotations
 
+import argparse
 import csv
 import datetime as dt
 import io
@@ -40,6 +41,7 @@ import urllib.request
 HERE = Path(__file__).resolve().parent
 OUTPUT_FILE = HERE / "elo.json"
 DEFAULT_HTML = HERE / "clubelo_ranking.html"
+BEYONDELO_API_KEY = "be_53JJFu4692fXmqaSUFz7ykzKlEOHrRlcDpUP3eZrj-s"
 
 # Noms du projet -> variantes possibles des noms affichés par ClubElo.
 # La correspondance est stricte après normalisation : pas de rapprochement
@@ -69,7 +71,7 @@ CLUBELO_NAMES = {
     "Napoli": ["Napoli"],
     "PSG": ["Paris SG", "PSG", "Paris Saint-Germain"],
     "Porto": ["Porto", "FC Porto"],
-    "PSV": ["PSV"],
+    "PSV": ["PSV", "PSV Eindhoven"],
     "Real Betis": ["Betis", "Real Betis"],
     "Real Madrid": ["Real Madrid"],
     "Roma": ["Roma", "AS Roma"],
@@ -374,7 +376,7 @@ def _find_local_html_files() -> list[Path]:
     return candidates
 
 
-def _fetch_api(date: str) -> str:
+def _fetch_api_clubelo(date: str) -> str:
     """Essaie l'ancienne API CSV (utile si ClubElo la remet en service)."""
     errors = []
     for scheme in ("https", "http"):
@@ -391,6 +393,41 @@ def _fetch_api(date: str) -> str:
     raise RuntimeError("API indisponible : " + " ; ".join(errors))
 
 
+def _fetch_api_beyondelo(date: str) -> str:
+    """Récupère les notes Elo depuis l'API beyondELO et les formate en CSV (Club,Elo)."""
+    url = f"https://public-api.beyondelo.com/v1/rankings/clubs?date={date}"
+    request = urllib.request.Request(
+        url,
+        headers={
+            "X-API-Key": BEYONDELO_API_KEY,
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"API beyondELO HTTP {exc.code} : {body}") from exc
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"API beyondELO indisponible : {exc}") from exc
+
+    clubs = payload.get("data")
+    if not isinstance(clubs, list):
+        raise ValueError("La réponse beyondELO ne contient pas la liste 'data' attendue")
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(["Club", "Elo"])
+    for club in clubs:
+        name = club.get("name")
+        elo = club.get("elo")
+        if name is not None and elo is not None:
+            writer.writerow([name, elo])
+    return buffer.getvalue()
+
+
 def _parse_csv(text: str) -> list[tuple[str, float]]:
     """Convertit le CSV historique ClubElo en paires (club, Elo)."""
     rows: list[tuple[str, float]] = []
@@ -402,20 +439,40 @@ def _parse_csv(text: str) -> list[tuple[str, float]]:
     return rows
 
 
-def _write_elo_json(elo: dict[str, int], date: str) -> None:
+def _write_elo_json(elo: dict[str, int], date: str, source: str = "clubelo") -> None:
     """Écrit elo.json de façon atomique, sans écraser un ancien fichier si erreur."""
-    payload = {"date": date, "elo": elo}
+    payload = {"date": date, "source": source, "elo": elo}
     temp_path = OUTPUT_FILE.with_suffix(".json.tmp")
     temp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     temp_path.replace(OUTPUT_FILE)
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = list(sys.argv[1:] if argv is None else argv)
+    parser = argparse.ArgumentParser(
+        description="Récupère les notes Elo des 36 clubs de la phase de ligue."
+    )
+    parser.add_argument(
+        "-s",
+        "--source",
+        choices=("clubelo", "beyondelo"),
+        default="beyondelo",
+        help="Source API à utiliser si aucun fichier HTML n'est utilisé (défaut : beyondelo).",
+    )
+    parser.add_argument(
+        "targets",
+        nargs="*",
+        metavar="AAAA-MM-JJ | fichier.html",
+        help="Date historique (AAAA-MM-JJ) ou fichier(s) HTML ClubElo.",
+    )
+    parsed = parser.parse_args(argv)
+    targets: list[str] = parsed.targets
 
     # Argument(s) HTML explicite(s) : le script lit exactement les fichiers fournis.
-    html_args = [Path(arg).expanduser() for arg in args if arg.lower().endswith((".html", ".htm"))]
+    html_args = [Path(arg).expanduser() for arg in targets if arg.lower().endswith((".html", ".htm"))]
     if html_args:
+        if parsed.source == "beyondelo":
+            print("L'option --source beyondelo ne s'utilise pas avec des fichiers HTML.", file=sys.stderr)
+            return 2
         html_args = [p if p.is_absolute() or p.is_file() else HERE / p for p in html_args]
         missing_files = [str(p) for p in html_args if not p.is_file()]
         if missing_files:
@@ -424,13 +481,16 @@ def main(argv: list[str] | None = None) -> int:
         html_files = [p.resolve() for p in html_args]
         requested_date = dt.date.today().isoformat()
     else:
-        requested_date = args[0] if args else dt.date.today().isoformat()
+        if len(targets) > 1:
+            parser.print_usage(sys.stderr)
+            return 2
+        requested_date = targets[0] if targets else dt.date.today().isoformat()
         try:
             dt.date.fromisoformat(requested_date)
         except ValueError:
-            print("Usage : python ldc_elo.py [AAAA-MM-JJ | fichier.html [autre_fichier.html ...]]", file=sys.stderr)
+            parser.print_usage(sys.stderr)
             return 2
-        html_files = _find_local_html_files() if not args else []
+        html_files = _find_local_html_files() if (not targets and parsed.source == "clubelo") else []
 
     records: list[tuple[str, float]] = []
     if html_files:
@@ -446,22 +506,27 @@ def main(argv: list[str] | None = None) -> int:
         source = ", ".join(path.name for path in html_files)
         data_date = dt.date.today().isoformat()
     else:
+        api_sources = {
+            "clubelo": ("API ClubElo", _fetch_api_clubelo),
+            "beyondelo": ("API beyondELO", _fetch_api_beyondelo),
+        }
+        api_label, fetch_fn = api_sources[parsed.source]
         # Les pages HTML téléchargées représentent le classement courant. Pour
         # une date historique, seule l'API datée peut fournir le bon instantané.
         try:
             if requested_date == dt.date.today().isoformat():
-                print("Aucun HTML local trouvé : tentative de l'API ClubElo...")
+                print(f"Tentative de {api_label}...")
             else:
-                print(f"Aucun HTML local trouvé : tentative de l'API historique du {requested_date}...")
-            csv_text = _fetch_api(requested_date)
+                print(f"Tentative de {api_label} historique du {requested_date}...")
+            csv_text = fetch_fn(requested_date)
             records = _parse_csv(csv_text)
-            source = "API ClubElo"
+            source = api_label
             data_date = requested_date
         except Exception as exc:
-            print(f"API ClubElo indisponible : {exc}", file=sys.stderr)
+            print(f"{api_label} indisponible : {exc}", file=sys.stderr)
             if requested_date != dt.date.today().isoformat():
                 print("Une page HTML actuelle ne peut pas remplacer un classement historique.", file=sys.stderr)
-            else:
+            elif parsed.source == "clubelo":
                 print("Télécharge la page ClubElo sous le nom clubelo_ranking.html puis relance.", file=sys.stderr)
             return 1
 
@@ -481,7 +546,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    _write_elo_json(elo, data_date)
+    _write_elo_json(elo, data_date, source=parsed.source)
     print(f"\nelo.json mis à jour : {len(elo)} équipes, date d'enregistrement {data_date}.")
     print(f"Source : {source}")
     print(f"Fichier créé : {OUTPUT_FILE}")
