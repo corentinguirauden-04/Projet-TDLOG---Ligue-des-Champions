@@ -125,7 +125,7 @@ python ldc_elo.py --source beyondelo
 python ldc_elo.py --source beyondelo 2026-10-01
 ```
 
-> **Note sur beyondELO :** beyondELO ne fournit pas un Elo strictement classique, mais une version étendue (inspirée du système Glicko) qui intègre l'importance des matchs et des ligues nationales, l'écart de buts et un avantage du terrain propre à chaque club, sur une échelle comparable à celle de ClubElo.
+> **Note sur beyondELO :** beyondELO ne fournit pas un Elo stricte, mais une version étendue qui intègre l'importance des matchs et des ligues nationales, l'écart de buts et un avantage du terrain propre à chaque club, sur une échelle comparable à celle de ClubElo.
 
 **Interprétation de la date dans `elo.json` :** avec la méthode HTML, la date enregistrée est la date à laquelle le script a été exécuté. Elle ne certifie pas à elle seule la date exacte de mise à jour du classement par ClubElo. Il faut donc télécharger une page fraîche avant chaque actualisation.
 
