@@ -1,6 +1,6 @@
 # Simulateur Monte Carlo — Ligue des champions 2026-2027
 
-Ce dépôt contient les modules Python utilisés pour estimer les chances de qualification des 36 clubs de la phase de ligue de la Ligue des champions, puis produire des graphiques de synthèse.
+Ce dépôt contient les modules Python utilisés pour estimer les chances de qualification des 36 clubs de la phase de ligue de la Ligue des champions, produire des graphiques de synthèse et les explorer dans une interface web interactive.
 
 Le projet combine :
 
@@ -8,9 +8,10 @@ Le projet combine :
 - les notes Elo des équipes (ClubElo, beyondELO ou Elo personnalisé manuel) ;
 - un modèle de buts fondé sur deux lois de Poisson ;
 - des simulations Monte Carlo de tous les matchs restants ;
-- des indicateurs statistiques et des visualisations.
+- des indicateurs statistiques et des visualisations ;
+- une interface web dynamique (`web_app.py` / `web/index.html`) pour naviguer entre les sources, comparer les clubs et relancer des simulations.
 
-> **Périmètre :** ce README décrit l'ensemble des modules du projet ainsi que les scripts `main.py` et `generate_outputs.py` qui orchestrent la pipeline complète.
+> **Périmètre :** ce README décrit l'ensemble des modules de calcul, les scripts d'orchestration (`main.py`, `generate_outputs.py`) ainsi que le serveur et le frontend web (`web_app.py`, `web/index.html`).
 
 ## 1. Organisation des fichiers
 
@@ -25,6 +26,9 @@ projet-ldc/
 ├── ldc_elo.py
 ├── ldc_sim.py
 ├── ldc_viz.py
+├── web_app.py
+├── web/
+│   └── index.html
 └── outputs/
     ├── html/
     ├── clubelo/
@@ -40,10 +44,12 @@ projet-ldc/
 | `ldc_elo.py` | Récupère les notes Elo depuis ClubElo (HTML local ou API CSV) ou depuis l'API beyondELO (`--source beyondelo`), puis écrit `elo.json`. |
 | `ldc_sim.py` | Cœur du moteur Monte Carlo : simule les scores, met à jour éventuellement les Elo, calcule les classements et estime les probabilités. |
 | `ldc_viz.py` | Produit les graphiques : vue d'ensemble des 36 équipes, fiche d'une équipe et fiche d'un scénario d'objectifs. |
+| `web_app.py` | Serveur HTTP léger (bibliothèque standard Python) qui sert l'interface web et permet de relancer des simulations depuis le navigateur. |
+| `web/index.html` | Interface web dynamique pour explorer les graphiques, comparer les clubs, consulter le calendrier et modifier les notes personnalisées. |
 
 ## 2. Installation
 
-Le module de récupération Elo (`ldc_elo.py`) n'utilise que la bibliothèque standard de Python. Le moteur et les graphiques nécessitent NumPy et Matplotlib.
+Les modules de récupération Elo (`ldc_elo.py`) et le serveur web (`web_app.py`) n'utilisent que la bibliothèque standard de Python. Le moteur et les graphiques nécessitent NumPy et Matplotlib.
 
 Dans l'environnement Python utilisé pour le projet :
 
@@ -51,7 +57,7 @@ Dans l'environnement Python utilisé pour le projet :
 python -m pip install numpy matplotlib
 ```
 
-Vérifier ensuite que les quatre fichiers sont dans le même dossier et que le terminal est positionné dans ce dossier.
+Vérifier ensuite que les fichiers du projet (ainsi que le dossier `web/`) sont dans le même répertoire et que le terminal est positionné dans ce dossier.
 
 ## 3. Préparer les données de la compétition — `ldc_data.py`
 
@@ -284,6 +290,7 @@ Avant une nouvelle projection :
    - `python main.py --source beyondelo` (API beyondELO) ;
    - `python main.py --source clubelo` (API ClubElo) ;
    - `python main.py --source manual` (notes `DEFAULT_ELO` de `ldc_data.py`, ou `--elo-file mon_elo.json` pour un Elo personnalisé).
+3. Lancer `python web_app.py` et ouvrir `http://127.0.0.1:8000` pour explorer les graphiques, comparer les clubs et ajuster les projections depuis l'interface web.
 
 ## 9. Évolutions possibles
 
@@ -322,3 +329,35 @@ python generate_outputs.py --source beyondelo 100000
 Le nombre d'équipes est lu automatiquement dans `ldc_data.py`. Dans la version actuelle, le projet contient **36 équipes** (et non 32). Le nombre de graphiques s'adapte donc à la liste réellement chargée.
 
 Les probabilités Top 8 et Top 24 sont estimées comme la fréquence observée sur les simulations. La probabilité de barrages correspond aux places 9 à 24 ; la probabilité d'élimination correspond aux places 25 à 36. Les valeurs exactes pour chacune des places figurent dans le CSV.
+
+## Interface web interactive — `web_app.py`
+
+Le projet inclut une interface web dynamique (sans framework externe) reprenant l'identité visuelle des graphiques.
+
+### Lancement et accès
+
+Depuis le dossier du projet :
+
+```powershell
+python web_app.py
+```
+
+Puis ouvrir **`http://127.0.0.1:8000`** dans un navigateur.
+
+Pour y accéder depuis un autre appareil sur le même réseau Wi-Fi (ex. un téléphone) :
+
+```powershell
+python web_app.py --host 0.0.0.0
+```
+
+Puis ouvrir `http://<adresse-IPv4-du-PC>:8000` (l'IPv4 locale s'obtient via `ipconfig`).
+
+### Contenu et fonctionnalités de l'interface
+
+- **Barre de contrôle :** choix de l'indice de force (**ClubElo**, **beyondELO**, **Personnalisé**), choix du nombre de scénarios simulés (`5 000` à `100 000`) et bouton pour recalculer les projections à la volée. En mode **Personnalisé**, un éditeur permet de modifier les notes des 36 clubs (entiers entre `500` et `3 000`) ou de les remettre aux valeurs par défaut (`DEFAULT_ELO`).
+- **Accueil & Repères :** mise en avant des 4 paliers clés (1re place, bataille du Top 8, Top 16 tête de série, maintien dans le Top 24) et focus sur les clubs français (PSG, Lille, Lens).
+- **Explorateur par Club :** fiche détaillée de chaque équipe avec ses indicateurs et ses 3 graphiques (`classement`, `points`, `matchs_cles`), avec zoom plein écran au clic.
+- **Classement & Seuils :** tableau interactif des 36 clubs (triable par colonne et filtrable), vue d'ensemble graphique et seuils de points requis (Top 8 / 16 / 24).
+- **Comparateur Face-à-Face :** comparaison directe des probabilités et des distributions de deux clubs côte à côte.
+- **Calendrier & Scores :** résultats déjà joués (J1–J4) et affiches à venir (J5–J8), filtrables par club.
+- **Méthodologie & À propos :** explication accessible du format de la compétition, des 3 indices et du calcul des projections.
