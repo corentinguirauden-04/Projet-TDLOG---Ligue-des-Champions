@@ -337,9 +337,11 @@ def simulate(n_sims=100_000, seed=42, elo=ELO, played=PLAYED, remaining=REMAININ
     # Une ligne par simulation, une colonne par équipe. Au départ, tous les
     # scénarios ont les mêmes notes Elo importées depuis ldc_data.py.
     elo_now = np.tile(np.array([elo[t] for t in TEAMS], dtype=float), (n_sims, 1))
+    remaining_list = list(remaining)
+    match_outcomes = np.empty((n_sims, len(remaining_list)), dtype=np.int8)
 
     # On simule les matchs restants un par un.
-    for h, a in remaining:
+    for m_idx, (h, a) in enumerate(remaining_list):
         ih, ia = IDX[h], IDX[a]  # indices du domicile et de l'extérieur
 
         # Probabilité attendue de victoire du domicile, bonus terrain inclus.
@@ -350,6 +352,9 @@ def simulate(n_sims=100_000, seed=42, elo=ELO, played=PLAYED, remaining=REMAININ
         # hg et ag sont donc des tableaux de longueur n_sims.
         hg = rng.poisson(lam_home(W))
         ag = rng.poisson(lam_away(W))
+
+        # Stocke l'issue du match (0 = victoire ext., 1 = nul, 2 = victoire dom.).
+        match_outcomes[:, m_idx] = np.where(hg > ag, 2, np.where(hg == ag, 1, 0))
 
         # On conserve les scores du match pour calculer le classement final.
         matches.append((ih, ia, hg, ag))
@@ -373,7 +378,9 @@ def simulate(n_sims=100_000, seed=42, elo=ELO, played=PLAYED, remaining=REMAININ
         pts=stats["pts"],
         gd=stats["gf"] - stats["ga"],
         elo=elo_now.astype(np.float32),
-        teams=TEAMS
+        teams=TEAMS,
+        remaining=remaining_list,
+        match_outcomes=match_outcomes,
     )
 
 
@@ -474,6 +481,77 @@ def points_thresholds(sim, positions=(8, 9, 16, 17, 24, 25)):
         out[p] = np.bincount(v, minlength=25) / len(v)
 
     return out
+
+
+def match_importance(sim):
+    """Calcule l'importance de chaque match restant pour chaque équipe.
+
+    Pour un match m = (domicile, extérieur) et une équipe t, l'importance
+    mesure l'écart maximal (entre 0 et 1) des chances de finir dans le Top 8
+    ou le Top 24 selon les 3 issues possibles du match (victoire domicile,
+    match nul, victoire extérieur).
+
+    Retour : dict {team: liste de dicts triés par importance décroissante}.
+    """
+    ranks = sim["ranks"]
+    outcomes = sim["match_outcomes"]
+    remaining = sim["remaining"]
+    teams = sim["teams"]
+    n_sims = ranks.shape[0]
+    min_samples = max(30, int(0.01 * n_sims))
+
+    is_top8 = (ranks <= 8).astype(float)
+    is_top24 = (ranks <= 24).astype(float)
+
+    n_matches = len(remaining)
+    n_teams = len(teams)
+    imp_score = np.zeros((n_matches, n_teams), dtype=float)
+    imp_min = np.zeros((n_matches, n_teams), dtype=float)
+    imp_max = np.zeros((n_matches, n_teams), dtype=float)
+    imp_zone = np.empty((n_matches, n_teams), dtype=object)
+
+    for m_idx in range(n_matches):
+        p8_by_o, p24_by_o = [], []
+        for o in (0, 1, 2):
+            mask = outcomes[:, m_idx] == o
+            if int(mask.sum()) >= min_samples:
+                p8_by_o.append(is_top8[mask].mean(axis=0))
+                p24_by_o.append(is_top24[mask].mean(axis=0))
+
+        if len(p8_by_o) < 2:
+            imp_zone[m_idx, :] = "Top 24"
+            continue
+
+        min8, max8 = np.min(p8_by_o, axis=0), np.max(p8_by_o, axis=0)
+        min24, max24 = np.min(p24_by_o, axis=0), np.max(p24_by_o, axis=0)
+        s8 = max8 - min8
+        s24 = max24 - min24
+
+        use_top8 = s8 >= s24
+        imp_score[m_idx] = np.where(use_top8, s8, s24)
+        imp_min[m_idx] = np.where(use_top8, min8, min24)
+        imp_max[m_idx] = np.where(use_top8, max8, max24)
+        imp_zone[m_idx] = np.where(use_top8, "Top 8", "Top 24")
+
+    result = {}
+    for t_idx, team in enumerate(teams):
+        entries = []
+        for m_idx, (home, away) in enumerate(remaining):
+            entries.append(
+                dict(
+                    home=home,
+                    away=away,
+                    is_own=(team == home or team == away),
+                    importance=float(imp_score[m_idx, t_idx]),
+                    min_prob=float(imp_min[m_idx, t_idx]),
+                    max_prob=float(imp_max[m_idx, t_idx]),
+                    zone=str(imp_zone[m_idx, t_idx]),
+                )
+            )
+        entries.sort(key=lambda item: (-item["importance"], not item["is_own"]))
+        result[team] = entries
+
+    return result
 
 
 # ----------------------------------------------------------------------------------------------

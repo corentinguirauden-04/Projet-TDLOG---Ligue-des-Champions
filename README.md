@@ -199,6 +199,7 @@ La vectorisation NumPy permet de traiter de nombreux scénarios dans des tableau
 | `qualification_probs(sim)` | Calcule les probabilités Top 8, barrages, Top 24, élimination et les points moyens. |
 | `prob_objectives(sim, objectives)` | Calcule la probabilité que plusieurs objectifs soient atteints simultanément. |
 | `points_thresholds(sim, positions)` | Calcule la distribution des points du club qui finit à certaines places (8e, 9e, 16e, etc.). |
+| `match_importance(sim)` | Mesure pour chaque équipe l'impact de chaque match restant sur ses chances de Top 8 ou Top 24 selon les 3 issues possibles (`1` / `N` / `2`). |
 
 Exécuter directement le module lance un exemple de 20 000 simulations et affiche les dix équipes avec la plus forte probabilité de finir dans le Top 8 :
 
@@ -223,12 +224,15 @@ for club, valeurs in sorted(
 
 ## 6. Produire les graphiques — `ldc_viz.py`
 
-`ldc_viz.py` contient trois fonctions de visualisation. Elles reçoivent les résultats de `ldc_sim.py` et enregistrent les images au chemin fourni.
+`ldc_viz.py` contient les fonctions de visualisation. Elles reçoivent les résultats de `ldc_sim.py` et enregistrent les images au chemin fourni.
 
 | Fonction | Fichier produit / contenu |
 |---|---|
 | `overview(sim, table, path)` | Vue globale des 36 équipes, avec les probabilités Top 8 / barrages / élimination. |
+| `points_thresholds_card(sim, path, n_sims=None)` | Vue globale des seuils : distribution du nombre de points nécessaires pour finir Top 8, Top 16 et Top 24. |
 | `team_card(team, sim, table, path, n_sims=None)` | Fiche d'une équipe : distribution des 36 places possibles et trois indicateurs de qualification. |
+| `team_points_card(team, sim, table, path, n_sims=None)` | Fiche d'une équipe : distribution des points finaux, moyenne, plage probable (10e–90e percentile) et points actuels/max. |
+| `team_important_matches_card(team, sim, table, path, n_sims=None)` | Fiche d'une équipe : Top 10 des matchs restants les plus décisifs (les siens et ceux des concurrents), avec l'écart de probabilité (en %) entre le pire et le meilleur résultat (`1` / `N` / `2`) pour le Top 8 ou le Top 24. |
 | `objectives_card(sim, objectives, path)` | Fiche de scénario : probabilité de chaque objectif et probabilité jointe que tous soient atteints. |
 
 Exemple d'utilisation pour générer trois images :
@@ -293,11 +297,14 @@ python main.py --source manual
 python main.py --source manual --elo-file mon_elo.json
 ```
 
-Par défaut, le script réalise **20 000 simulations Monte Carlo** (graine aléatoire fixe : 42) et produit dans `outputs/<source>/` :
+Par défaut, le script réalise **20 000 simulations Monte Carlo** (graine aléatoire fixe : 42) et range tous les résultats dans `outputs/<source>/` (`outputs/clubelo/`, `outputs/beyondelo/` ou `outputs/manual/`) :
 
-- `outputs/<source>/equipes/` : une image PNG par équipe ;
-- `outputs/<source>/classement_global.png` : une vue générale des probabilités de qualification ;
-- `outputs/<source>/probabilites_equipes.csv` : les probabilités Top 8, Top 24, barrages, élimination, points moyens et probabilité de chacune des places.
+- `outputs/<source>/equipes/<equipe>.png` : distribution des places finales (1re à 36e) et probabilités Top 8 / Top 24 / élimination pour chaque équipe ;
+- `outputs/<source>/equipes_points/<equipe>.png` : distribution du nombre de points finaux pour chaque équipe ;
+- `outputs/<source>/equipes_matchs/<equipe>.png` : Top 10 des matchs restants les plus importants pour chaque équipe (avec l'écart en % entre le pire et le meilleur scénario) ;
+- `outputs/<source>/classement_global.png` : vue générale des probabilités de qualification des 36 équipes ;
+- `outputs/<source>/seuils_points_top_8_16_24.png` : distribution globale du nombre de points nécessaires pour finir dans le Top 8, le Top 16 et le Top 24 ;
+- `outputs/<source>/probabilites_equipes.csv` : tableau des probabilités Top 8, Top 24, barrages, élimination, points moyens et probabilité de chacune des 36 places.
 
 Pour augmenter le nombre de simulations, indiquez-le avec `--n-sims` (ou en argument de `generate_outputs.py`) :
 

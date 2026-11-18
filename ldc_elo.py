@@ -535,16 +535,18 @@ def main(argv: list[str] | None = None) -> int:
     for line in matched:
         print("  OK  " + line)
 
-    if missing:
-        print("\nÉquipes introuvables : " + ", ".join(missing), file=sys.stderr)
-        print(
-            "\nLe fichier elo.json n'a PAS été modifié. "
-            "La page fournie ne contient probablement pas tous les clubs.\n"
-            "Télécharge aussi les pages nationales nécessaires en les nommant, par exemple,\n"
-            "clubelo_ENG.html, clubelo_FRA.html, clubelo_GER.html, puis relance le script.",
-            file=sys.stderr,
-        )
+    if not elo:
+        print("\nAucune équipe reconnue : elo.json n'a PAS été modifié.", file=sys.stderr)
         return 1
+
+    if missing:
+        import ldc_data
+
+        print("\nÉquipes introuvables (remplacement par DEFAULT_ELO de ldc_data.py) :")
+        for team in missing:
+            default_val = int(ldc_data.DEFAULT_ELO[team])
+            elo[team] = default_val
+            print(f"  DEFAULT  {team} <- {default_val}")
 
     _write_elo_json(elo, data_date, source=parsed.source)
     print(f"\nelo.json mis à jour : {len(elo)} équipes, date d'enregistrement {data_date}.")

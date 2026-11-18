@@ -1,12 +1,16 @@
 """Génère les graphiques de qualification pour toutes les équipes.
 
 À lancer depuis le dossier du projet :
-    python generate_outputs.py
-    python generate_outputs.py --source beyondelo
-    python generate_outputs.py --source beyondelo 100000
+    python generate_outputs.py --source clubelo                          # utilise clubelo (HTML local ou API si elo.json absent/autre source)
+    python generate_outputs.py --source beyondelo                        # récupère les Elo beyondELO si besoin (dernier JSON ne provenant pas de beyondELO) 
+    python generate_outputs.py --source beyondelo 100000 --date 2026-10-01  # 100 000 sim. avec les Elo beyondELO du 2026-10-01
+    python generate_outputs.py --source beyondelo --refresh              # force le re-téléchargement depuis l'API beyondELO
+    python generate_outputs.py --source manual                           # utilise DEFAULT_ELO de ldc_data.py -> outputs/manual/
+    python generate_outputs.py --source manual --elo-file mon_elo.json   # utilise un fichier JSON personnalisé -> outputs/manual/
 
-Le nombre de simulations est de 20 000 par défaut. Les images sont enregistrées
-localement dans outputs/<source>/ et un CSV contient les probabilités exactes par place.
+Le nombre de simulations est de 20 000 par défaut. Les images et le CSV sont
+enregistrés dans outputs/<source>/ (equipes/, equipes_points/, equipes_matchs/,
+classement_global.png, seuils_points_top_8_16_24.png, probabilites_equipes.csv).
 """
 from __future__ import annotations
 
@@ -76,7 +80,10 @@ def _ensure_elo_source(
     elo_args = ["--source", source]
     if date is not None:
         elo_args.append(date)
-    return ldc_elo.main(elo_args)
+    status = ldc_elo.main(elo_args)
+    if status == 0 and "ldc_data" in sys.modules:
+        importlib.reload(sys.modules["ldc_data"])
+    return status
 
 
 def safe_filename(team: str) -> str:
@@ -176,8 +183,12 @@ def main(argv: list[str] | None = None) -> int:
 
     output_dir = OUTPUT_DIR / args.source
     team_output_dir = output_dir / "equipes"
+    points_output_dir = output_dir / "equipes_points"
+    matches_output_dir = output_dir / "equipes_matchs"
     output_dir.mkdir(parents=True, exist_ok=True)
     team_output_dir.mkdir(parents=True, exist_ok=True)
+    points_output_dir.mkdir(parents=True, exist_ok=True)
+    matches_output_dir.mkdir(parents=True, exist_ok=True)
 
     print(
         f"Lancement de {n_sims:,} simulations ({args.source}) "
@@ -185,14 +196,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     simulation = sim_engine.simulate(n_sims=n_sims, seed=SEED)
 
-    # Ces deux calculs sont effectués une seule fois puis réutilisés pour les 36 fiches.
+    # Ces calculs sont effectués une seule fois puis réutilisés pour les 36 fiches.
     rank_dist = sim_engine.rank_distribution(simulation)
     qualifications = sim_engine.qualification_probs(simulation)
+    importance = sim_engine.match_importance(simulation)
     current_table = sim_engine.current_table()
 
-    # Une fiche PNG par équipe.
+    # Fiches PNG par équipe (classement, points, Top 10 matchs importants).
     for index, team in enumerate(sim_engine.TEAMS, start=1):
-        image_path = team_output_dir / f"{safe_filename(team)}.png"
+        fname = f"{safe_filename(team)}.png"
+        image_path = team_output_dir / fname
         viz.team_card(
             team,
             simulation,
@@ -202,11 +215,30 @@ def main(argv: list[str] | None = None) -> int:
             rank_dist=rank_dist,
             qualifications=qualifications,
         )
-        print(f"[{index:02d}/{len(sim_engine.TEAMS)}] Graphique créé : {image_path.name}")
+        viz.team_points_card(
+            team,
+            simulation,
+            current_table,
+            points_output_dir / fname,
+            n_sims=n_sims,
+            qualifications=qualifications,
+        )
+        viz.team_important_matches_card(
+            team,
+            simulation,
+            current_table,
+            matches_output_dir / fname,
+            n_sims=n_sims,
+            importance=importance,
+        )
+        print(f"[{index:02d}/{len(sim_engine.TEAMS)}] Graphiques créés : {fname}")
 
-    # Vue d'ensemble facultative mais pratique pour comparer les équipes.
+    # Vues d'ensemble : probabilités de qualification + seuils de points Top 8 / 16 / 24.
     overview_path = output_dir / "classement_global.png"
     viz.overview(simulation, current_table, overview_path)
+
+    thresholds_path = output_dir / "seuils_points_top_8_16_24.png"
+    viz.points_thresholds_card(simulation, thresholds_path, n_sims=n_sims)
 
     # Tableau CSV avec les valeurs exactes, y compris les probabilités des 36 places.
     csv_path = output_dir / "probabilites_equipes.csv"
@@ -215,8 +247,11 @@ def main(argv: list[str] | None = None) -> int:
     print("\nTerminé !")
     print(f"Source : {args.source}")
     print(f"Équipes traitées : {len(sim_engine.TEAMS)}")
-    print(f"Graphiques individuels : {team_output_dir}")
+    print(f"Graphiques classements : {team_output_dir}")
+    print(f"Graphiques points : {points_output_dir}")
+    print(f"Graphiques matchs clés : {matches_output_dir}")
     print(f"Vue d'ensemble : {overview_path}")
+    print(f"Seuils de points Top 8/16/24 : {thresholds_path}")
     print(f"Probabilités détaillées (CSV) : {csv_path}")
     return 0
 

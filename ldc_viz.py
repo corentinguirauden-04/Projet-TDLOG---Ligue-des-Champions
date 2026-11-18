@@ -209,3 +209,250 @@ def objectives_card(sim, objectives, path):
              "tient compte du fait que les résultats des équipes s'influencent.", fontsize=9, color=MUTED)
     fig.savefig(path, dpi=130, facecolor=BG)
     plt.close(fig)
+
+
+def _draw_kpi_boxes(fig, boxes):
+    """Dessine la rangée de 3 panneaux KPI dans le style plateau télé."""
+    x0, w, gap = 0.07, 0.285, 0.0225
+    for k, (title, sub, val_text, col) in enumerate(boxes):
+        x = x0 + k * (w + gap)
+        fig.patches.append(Rectangle((x, 0.67), w, 0.14, transform=fig.transFigure,
+                                     facecolor=PANEL, edgecolor="none", zorder=1))
+        fig.patches.append(Rectangle((x, 0.67), 0.006, 0.14, transform=fig.transFigure,
+                                     facecolor=col, edgecolor="none", zorder=2))
+        val_size = 24 if len(val_text) <= 7 else 19
+        fig.text(x + 0.02, 0.785, title, fontsize=10, color=MUTED, fontweight="bold", va="center")
+        fig.text(x + 0.02, 0.730, val_text, fontsize=val_size, color=col, fontweight="bold", va="center")
+        fig.text(x + w - 0.015, 0.690, sub, fontsize=8.5, color=MUTED, ha="right", va="center")
+
+
+def _style_bar_axes(ax):
+    """Applique le style des axes (grille horizontale discrète, épines épurées)."""
+    ax.grid(axis="y", color=TXT, alpha=0.12, linewidth=0.7, zorder=0)
+    for sp in ("top", "right"):
+        ax.spines[sp].set_visible(False)
+    ax.spines["left"].set_color(MUTED)
+    ax.spines["bottom"].set_color(MUTED)
+    ax.tick_params(axis="x", length=0, labelsize=10)
+    ax.tick_params(axis="y", length=0, colors=MUTED)
+
+
+def team_points_card(team, sim, table, path, n_sims=None, qualifications=None):
+    """Enregistre la distribution des points finaux d'une équipe."""
+    if qualifications is None:
+        qualifications = s.qualification_probs(sim)
+
+    team_pts = sim["pts"][:, s.IDX[team]]
+    n_sims = n_sims or sim["ranks"].shape[0]
+    q = qualifications[team]
+    cur = next(r for r in table if r["team"] == team)
+    max_possible = cur["pts"] + 3 * sum(1 for h, a in sim["remaining"] if team in (h, a))
+
+    dist = np.bincount(team_pts, minlength=25) / n_sims
+    nonzero = np.where(dist > 0)[0]
+    p_min = max(0, int(nonzero[0]) - 1) if len(nonzero) else 0
+    p_max = min(24, int(nonzero[-1]) + 1) if len(nonzero) else 24
+    pts_range = np.arange(p_min, p_max + 1)
+    vals = 100 * dist[p_min:p_max + 1]
+
+    p10, p90 = np.percentile(team_pts, [10, 90])
+
+    fig = _new_fig((12, 6.75))
+    ax = fig.add_axes([0.07, 0.15, 0.88, 0.47], facecolor="none")
+
+    ax.bar(pts_range, vals, color=C_TOP8, width=0.72, zorder=3)
+    ax.axvline(q["exp_pts"], color=C_PLAY, linestyle="--", linewidth=1.8, zorder=4)
+    for p, v in zip(pts_range, vals):
+        if v >= 3.0:
+            ax.text(p, v + 0.6, f"{v:.0f}", ha="center", va="bottom", fontsize=9, color=TXT, zorder=5)
+
+    ax.set_xlim(p_min - 0.6, p_max + 0.6)
+    y_max = max(vals.max() * 1.25, 10)
+    ax.set_ylim(0, y_max)
+    ax.set_xticks(pts_range)
+    y_step = 5 if y_max <= 25 else 10
+    y_ticks = np.arange(0, y_max + 0.001, y_step)
+    ax.set_yticks(y_ticks)
+    ax.set_yticklabels([f"{v:.0f} %" for v in y_ticks], fontsize=8)
+    _style_bar_axes(ax)
+    ax.set_xlabel("Nombre de points en fin de phase de ligue", fontsize=10, labelpad=8)
+    ax.set_ylabel("Probabilité", fontsize=10, labelpad=8)
+
+    fig.text(0.07, 0.92, f"{team.upper()} — POINTS", fontsize=28, fontweight="bold", color=TXT, va="center")
+    fig.text(
+        0.07,
+        0.855,
+        f"Classement actuel : {cur['rank']}e  ·  {cur['pts']} pts  ·  diff. {cur['gd']:+d}",
+        fontsize=12,
+        color=MUTED,
+        va="center",
+    )
+
+    boxes = [
+        ("POINTS MOYENS", "Espérance (ligne jaune)", f"{q['exp_pts']:.1f} pts", C_TOP8),
+        ("PLAGE PROBABLE (80 %)", "10e - 90e percentile", f"{p10:.0f} - {p90:.0f} pts", C_PLAY),
+        ("POINTS ACTUELS", f"Max : {max_possible} pts", f"{cur['pts']} pts", C_OUT),
+    ]
+    _draw_kpi_boxes(fig, boxes)
+
+    fig.text(
+        0.07,
+        0.055,
+        f"Top 8 : {pct(q['top8'])}   ·   Top 24 : {pct(q['top24'])}   ·   Élimination : {pct(q['out'])}",
+        fontsize=9,
+        color=MUTED,
+        va="center",
+    )
+    fig.text(
+        0.07,
+        0.025,
+        f"Monte Carlo : {n_sims:,} simulations · Modèle Elo + loi de Poisson".replace(",", " "),
+        fontsize=8,
+        color=MUTED,
+        va="center",
+    )
+    fig.savefig(path, dpi=130, facecolor=BG)
+    plt.close(fig)
+
+
+def team_important_matches_card(team, sim, table, path, n_sims=None, importance=None):
+    """Enregistre le Top 10 des matchs les plus importants pour une équipe."""
+    if importance is None:
+        importance = s.match_importance(sim)
+
+    top_matches = importance[team][:10]
+    cur = next(r for r in table if r["team"] == team)
+    n_sims = n_sims or sim["ranks"].shape[0]
+
+    ordered = list(reversed(top_matches))
+    labels = [f"{m['home']} - {m['away']}" for m in ordered]
+    vals = [100.0 * m["importance"] for m in ordered]
+    cols = [C_TOP8 if m["is_own"] else C_PLAY for m in ordered]
+
+    fig = _new_fig((12, 6.75))
+    ax = fig.add_axes([0.27, 0.14, 0.45, 0.63], facecolor="none")
+    y = np.arange(len(labels))
+    ax.barh(y, vals, color=cols, height=0.62, zorder=3)
+
+    x_max = max(max(vals, default=5.0) * 1.08, 5.0)
+    for yi, m, v in zip(y, ordered, vals):
+        p_lo = 100.0 * m["min_prob"]
+        p_hi = 100.0 * m["max_prob"]
+        txt = f"{v:.1f} % ({m['zone']} : {p_lo:.0f} % → {p_hi:.0f} %)"
+        ax.text(v + x_max * 0.02, yi, txt, va="center", fontsize=9.5, color=TXT, fontweight="bold")
+
+    ax.set_xlim(0, x_max)
+    ax.set_ylim(-0.6, len(labels) - 0.4)
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=10.5, color=TXT)
+    ax.set_xticks([])
+    for sp in ax.spines.values():
+        sp.set_visible(False)
+    ax.tick_params(length=0)
+
+    fig.text(0.07, 0.92, f"{team.upper()} — MATCHS CLÉS", fontsize=26, fontweight="bold", color=TXT, va="center")
+    fig.text(
+        0.07,
+        0.86,
+        f"Top 10 des matchs restants les plus décisifs  ·  Actuel : {cur['rank']}e ({cur['pts']} pts)",
+        fontsize=12,
+        color=MUTED,
+        va="center",
+    )
+
+    for k, (lab, col) in enumerate([("Match de l'équipe", C_TOP8), ("Match d'autres équipes", C_PLAY)]):
+        x = 0.27 + k * 0.25
+        fig.patches.append(Rectangle((x, 0.795), 0.014, 0.016, transform=fig.transFigure, facecolor=col))
+        fig.text(x + 0.02, 0.803, lab, fontsize=10, color=TXT, va="center")
+
+    fig.text(
+        0.07,
+        0.055,
+        "Écart (en %) entre le pire et le meilleur scénario pour le Top 8 ou le Top 24 selon le résultat du match (1 / N / 2).",
+        fontsize=9,
+        color=MUTED,
+        va="center",
+    )
+    fig.text(
+        0.07,
+        0.025,
+        f"Monte Carlo : {n_sims:,} simulations · Modèle Elo + loi de Poisson".replace(",", " "),
+        fontsize=8,
+        color=MUTED,
+        va="center",
+    )
+    fig.savefig(path, dpi=130, facecolor=BG)
+    plt.close(fig)
+
+
+def points_thresholds_card(sim, path, n_sims=None):
+    """Graphe global : distribution des points nécessaires pour finir Top 8 / 16 / 24."""
+    n_sims = n_sims or sim["ranks"].shape[0]
+    thresholds = s.points_thresholds(sim, positions=(8, 16, 24))
+    pts_axis = np.arange(len(thresholds[8]))
+
+    active = np.where((thresholds[8] + thresholds[16] + thresholds[24]) >= 0.002)[0]
+    p_min = max(0, int(active[0]) - 1) if len(active) else 0
+    p_max = min(24, int(active[-1]) + 1) if len(active) else 24
+    x = np.arange(p_min, p_max + 1)
+
+    fig = _new_fig((12, 6.75))
+    ax = fig.add_axes([0.07, 0.15, 0.88, 0.47], facecolor="none")
+
+    series = [
+        (8, "Top 8 (8e place)", C_TOP8, -0.26),
+        (16, "Top 16 (16e place)", C_PLAY, 0.0),
+        (24, "Top 24 (24e place)", C_OUT, 0.26),
+    ]
+    y_max = 10.0
+    kpis = []
+    for pos, label, col, offset in series:
+        dist = thresholds[pos]
+        vals = 100 * dist[p_min:p_max + 1]
+        y_max = max(y_max, float(vals.max()) * 1.22)
+        ax.bar(x + offset, vals, width=0.25, color=col, label=label, zorder=3)
+        for xi, v in zip(x + offset, vals):
+            if v >= 6.0:
+                ax.text(xi, v + 0.5, f"{v:.0f}", ha="center", va="bottom", fontsize=7.5, color=TXT, zorder=4)
+        mean_p = float(np.sum(pts_axis * dist))
+        mode_p = int(np.argmax(dist))
+        kpis.append((label.upper(), f"Nombre de points le plus fréquent du seuil : {mode_p} pts", f"{mean_p:.1f} pts", col))
+
+    ax.set_xlim(p_min - 0.6, p_max + 0.6)
+    ax.set_ylim(0, y_max)
+    ax.set_xticks(x)
+    y_step = 5 if y_max <= 30 else 10
+    y_ticks = np.arange(0, y_max + 0.001, y_step)
+    ax.set_yticks(y_ticks)
+    ax.set_yticklabels([f"{v:.0f} %" for v in y_ticks], fontsize=8)
+    _style_bar_axes(ax)
+    ax.set_xlabel("Points du dernier qualifié à la place seuil", fontsize=10, labelpad=8)
+    ax.set_ylabel("Probabilité", fontsize=10, labelpad=8)
+
+    fig.text(0.07, 0.92, "SEUILS DE QUALIFICATION — TOP 8 / 16 / 24", fontsize=26, fontweight="bold", color=TXT, va="center")
+    fig.text(
+        0.07,
+        0.855,
+        "Distribution du nombre de points nécessaires (score du 8e, 16e et 24e en fin de phase de ligue)",
+        fontsize=12,
+        color=MUTED,
+        va="center",
+    )
+
+    _draw_kpi_boxes(fig, kpis)
+
+    for k, (_, label, col, _) in enumerate(series):
+        lx = 0.07 + k * 0.23
+        fig.patches.append(Rectangle((lx, 0.625), 0.012, 0.014, transform=fig.transFigure, facecolor=col))
+        fig.text(lx + 0.018, 0.632, label, fontsize=9.5, color=TXT, va="center")
+
+    fig.text(
+        0.07,
+        0.025,
+        f"Monte Carlo : {n_sims:,} simulations · Modèle Elo + loi de Poisson".replace(",", " "),
+        fontsize=8,
+        color=MUTED,
+        va="center",
+    )
+    fig.savefig(path, dpi=130, facecolor=BG)
+    plt.close(fig)
