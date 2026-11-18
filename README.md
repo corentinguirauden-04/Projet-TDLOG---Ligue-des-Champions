@@ -153,9 +153,10 @@ Le module `ldc_sim.py` importe `ELO`, `PLAYED`, `REMAINING` et `TEAMS` depuis `l
 
 La probabilité théorique de victoire de l'équipe à domicile est calculée à partir de l'écart Elo, avec un bonus de 100 points pour l'équipe qui reçoit :
 
-\[
-W = \frac{1}{1 + 10^{-((Elo_{domicile}+100-Elo_{extérieur})/400)}}
-\]
+$$
+W = \frac{1}{1 + 10^{-((Elo_{\text{domicile}} + 100 - Elo_{\text{extérieur}}) / 400)}}
+$$
+
 
 Deux polynômes ajustés dans le projet convertissent ensuite `W` en buts moyens attendus :
 
