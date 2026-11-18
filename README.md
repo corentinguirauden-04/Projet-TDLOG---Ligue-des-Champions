@@ -26,6 +26,7 @@ projet-ldc/
 ├── ldc_sim.py
 ├── ldc_viz.py
 └── outputs/
+    ├── html/
     ├── clubelo/
     ├── beyondelo/
     └── manual/
@@ -33,7 +34,7 @@ projet-ldc/
 
 | Fichier | Rôle |
 |---|---|
-| `main.py` | Point d'entrée unique : choisit la source Elo (`clubelo`, `beyondelo` ou `manual`), vérifie les données et lance la génération complète dans `outputs/<source>/`. |
+| `main.py` | Point d'entrée unique : choisit la source Elo (`html` par défaut, `clubelo`, `beyondelo` ou `manual`), vérifie les données et lance la génération complète dans `outputs/<source>/`. |
 | `generate_outputs.py` | Lance les simulations Monte Carlo, crée les fiches individuelles, la vue globale et le CSV des probabilités dans `outputs/<source>/`. |
 | `ldc_data.py` | Contient les 36 équipes, les notes Elo manuelles de secours (`DEFAULT_ELO`), les résultats déjà joués et les matchs restants. Vérifie aussi la cohérence du calendrier. |
 | `ldc_elo.py` | Récupère les notes Elo depuis ClubElo (HTML local ou API CSV) ou depuis l'API beyondELO (`--source beyondelo`), puis écrit `elo.json`. |
@@ -106,7 +107,7 @@ clubelo_GER.html
 clubelo_ITA.html
 ```
 
-Le script agrège ces fichiers. Il n'écrit `elo.json` que lorsque les 36 équipes ont été reconnues. Si des clubs manquent, il affiche leur liste et conserve l'ancien `elo.json` sans l'écraser.
+Le script agrège ces fichiers. Si certains clubs manquent (et qu'au moins une équipe a été reconnue), il les complète automatiquement avec les valeurs `DEFAULT_ELO` de `ldc_data.py` en les affichant dans la console avant d'écrire `elo.json`. Si aucune équipe n'est reconnue, il conserve l'ancien `elo.json` sans l'écraser.
 
 On peut aussi indiquer explicitement le ou les fichiers à lire :
 
@@ -115,7 +116,7 @@ python ldc_elo.py clubelo_ranking.html
 python ldc_elo.py clubelo_ENG.html clubelo_FRA.html clubelo_GER.html
 ```
 
-En l'absence de fichier HTML local, le script tente l'ancienne API CSV ClubElo (ou l'API beyondELO si `--source beyondelo` est indiqué). L'API ClubElo peut renvoyer une erreur 502. Une date historique peut être demandée avec `python ldc_elo.py AAAA-MM-JJ` ou `python ldc_elo.py --source beyondelo AAAA-MM-JJ`, mais elle nécessite que l'API correspondante réponde : une page HTML actuelle ne permet pas de reconstruire un classement passé.
+Pour interroger directement une API (sans lire les fichiers HTML locaux), utiliser `--source clubelo` (API CSV ClubElo) ou `--source beyondelo` (API beyondELO). L'API ClubElo peut renvoyer une erreur 502. Une date historique peut être demandée avec `python ldc_elo.py --source clubelo AAAA-MM-JJ` ou `python ldc_elo.py --source beyondelo AAAA-MM-JJ`, mais elle nécessite que l'API correspondante réponde : une page HTML actuelle ne permet pas de reconstruire un classement passé.
 
 ### Source alternative : API beyondELO
 
@@ -277,8 +278,9 @@ Avant une nouvelle projection :
 
 1. Mettre à jour les résultats joués et les matchs restants dans `ldc_data.py`.
 2. Choisir la source Elo et exécuter la pipeline complète via `main.py` :
+   - `python main.py` ou `python main.py --source html` (fichiers HTML ClubElo locaux, par défaut) ;
    - `python main.py --source beyondelo` (API beyondELO) ;
-   - `python main.py --source clubelo` (API ClubElo, ou `python ldc_elo.py clubelo_ranking.html` puis `python main.py --source clubelo --no-refresh` avec un HTML local) ;
+   - `python main.py --source clubelo` (API ClubElo) ;
    - `python main.py --source manual` (notes `DEFAULT_ELO` de `ldc_data.py`, ou `--elo-file mon_elo.json` pour un Elo personnalisé).
 
 ## 9. Évolutions possibles
@@ -292,13 +294,14 @@ Avant une nouvelle projection :
 Depuis le dossier contenant les fichiers Python, activez votre environnement virtuel puis exécutez `main.py` (ou directement `generate_outputs.py`) :
 
 ```powershell
+python main.py --source html
 python main.py --source clubelo
 python main.py --source beyondelo
 python main.py --source manual
 python main.py --source manual --elo-file mon_elo.json
 ```
 
-Par défaut, le script réalise **20 000 simulations Monte Carlo** (graine aléatoire fixe : 42) et range tous les résultats dans `outputs/<source>/` (`outputs/clubelo/`, `outputs/beyondelo/` ou `outputs/manual/`) :
+Par défaut, le script réalise **20 000 simulations Monte Carlo** (graine aléatoire fixe : 42) et range tous les résultats dans `outputs/<source>/` (`outputs/html/`, `outputs/clubelo/`, `outputs/beyondelo/` ou `outputs/manual/`) :
 
 - `outputs/<source>/equipes/<equipe>.png` : distribution des places finales (1re à 36e) et probabilités Top 8 / Top 24 / élimination pour chaque équipe ;
 - `outputs/<source>/equipes_points/<equipe>.png` : distribution du nombre de points finaux pour chaque équipe ;
