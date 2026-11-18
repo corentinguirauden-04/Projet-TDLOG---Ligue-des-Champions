@@ -1471,9 +1471,8 @@
       const byTop8Border = [...state.teams]
         .sort((a, b) => Math.abs(a.top8 - 0.5) - Math.abs(b.top8 - 0.5))
         .slice(0, 3);
-      const byTop16 = [...state.teams]
-        .filter(t => t.top8 < 0.75 && t.top24 > 0.5)
-        .sort((a, b) => b.top16 - a.top16)
+      const byTop16Border = [...state.teams]
+        .sort((a, b) => Math.abs(a.top16 - 0.5) - Math.abs(b.top16 - 0.5))
         .slice(0, 3);
       const byTop24Border = [...state.teams]
         .sort((a, b) => Math.abs(a.top24 - 0.5) - Math.abs(b.top24 - 0.5))
@@ -1483,7 +1482,7 @@
         {
           cls: "",
           badge: "1re place",
-          title: "Favoris pour la 1re place",
+          title: "Les grands favoris",
           explain: "Les clubs ayant la plus forte probabilité de terminer en tête de la phase de ligue.",
           items: byTop1.map(t => ({
             team: t.team,
@@ -1504,12 +1503,12 @@
         },
         {
           cls: "play",
-          badge: "Top 16 — Têtes de série",
+          badge: "Top 16 — Milieu de tableau",
           title: "Au cœur du peloton",
-          explain: "Solides candidats aux barrages ayant de fortes chances de finir entre la 9e et la 16e place (~12 pts).",
-          items: byTop16.map(t => ({
+          explain: "Les équipes à la lutte autour de la 16e place (~12 pts).",
+          items: byTop16Border.map(t => ({
             team: t.team,
-            meta: `Actuel : ${t.cur_rank}e (${t.cur_pts} pts) · Top 16 : ${pct(t.top16)}`,
+            meta: `Actuel : ${t.cur_rank}e (${t.cur_pts} pts) · Proj. : ${t.exp_pts.toFixed(1)} pts`,
             stat: pct(t.top16),
           })),
         },
