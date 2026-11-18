@@ -83,7 +83,7 @@ Le code fourni indique que les résultats et le calendrier proviennent d'UEFA.co
 
 ### Méthode actuelle : fichier HTML téléchargé
 
-L'accès automatisé à ClubElo peut être refusé par son service anti-bot. La méthode de secours retenue pour le projet est donc de télécharger la page dans un navigateur, puis de laisser Python en extraire les notes.
+L'accès API ClubElo ne fonctionne pas actuellement. La méthode de secours retenue pour le projet est donc de télécharger la page dans un navigateur, puis de laisser Python en extraire les notes.
 
 1. Ouvrir [ClubElo — Ranking](https://clubelo.com/Ranking) dans un navigateur.
 2. Attendre que la page et son classement aient fini de charger.
@@ -116,8 +116,6 @@ python ldc_elo.py clubelo_ranking.html
 python ldc_elo.py clubelo_ENG.html clubelo_FRA.html clubelo_GER.html
 ```
 
-Pour interroger directement une API (sans lire les fichiers HTML locaux), utiliser `--source clubelo` (API CSV ClubElo) ou `--source beyondelo` (API beyondELO). L'API ClubElo peut renvoyer une erreur 502. Une date historique peut être demandée avec `python ldc_elo.py --source clubelo AAAA-MM-JJ` ou `python ldc_elo.py --source beyondelo AAAA-MM-JJ`, mais elle nécessite que l'API correspondante réponde : une page HTML actuelle ne permet pas de reconstruire un classement passé.
-
 ### Source alternative : API beyondELO
 
 Il est aussi possible de récupérer directement les notes Elo depuis l'API beyondELO (`_fetch_api_beyondelo`), au même format de sortie :
@@ -127,7 +125,11 @@ python ldc_elo.py --source beyondelo
 python ldc_elo.py --source beyondelo 2026-10-01
 ```
 
+> **Note sur beyondELO :** beyondELO ne fournit pas un Elo strictement classique, mais une version étendue (inspirée du système Glicko) qui intègre l'importance des matchs et des ligues nationales, l'écart de buts et un avantage du terrain propre à chaque club, sur une échelle comparable à celle de ClubElo.
+
 **Interprétation de la date dans `elo.json` :** avec la méthode HTML, la date enregistrée est la date à laquelle le script a été exécuté. Elle ne certifie pas à elle seule la date exacte de mise à jour du classement par ClubElo. Il faut donc télécharger une page fraîche avant chaque actualisation.
+
+La même méthode est implémentée pour l'API ClubElo, mais celle-ci ne fonctionne pas actuellement.
 
 ### Format de sortie
 
