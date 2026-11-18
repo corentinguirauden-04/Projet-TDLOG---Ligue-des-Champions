@@ -129,7 +129,7 @@ python ldc_elo.py --source beyondelo 2026-10-01
 
 **Interprétation de la date dans `elo.json` :** avec la méthode HTML, la date enregistrée est la date à laquelle le script a été exécuté. Elle ne certifie pas à elle seule la date exacte de mise à jour du classement par ClubElo. Il faut donc télécharger une page fraîche avant chaque actualisation.
 
-La même méthode est implémentée pour l'API ClubElo, mais celle-ci ne fonctionne pas actuellement.
+La même méthode est implémentée pour l'API ClubElo, si celui-ci vient à fonctionner de nouveau.
 
 ### Format de sortie
 
@@ -305,9 +305,9 @@ python main.py --source manual --elo-file mon_elo.json
 
 Par défaut, le script réalise **20 000 simulations Monte Carlo** (graine aléatoire fixe : 42) et range tous les résultats dans `outputs/<source>/` (`outputs/html/`, `outputs/clubelo/`, `outputs/beyondelo/` ou `outputs/manual/`) :
 
-- `outputs/<source>/equipes/<equipe>.png` : distribution des places finales (1re à 36e) et probabilités Top 8 / Top 24 / élimination pour chaque équipe ;
-- `outputs/<source>/equipes_points/<equipe>.png` : distribution du nombre de points finaux pour chaque équipe ;
-- `outputs/<source>/equipes_matchs/<equipe>.png` : Top 10 des matchs restants les plus importants pour chaque équipe (avec l'écart en % entre le pire et le meilleur scénario) ;
+- `outputs/<source>/equipes/<equipe>/classement.png` : distribution des places finales (1re à 36e) et probabilités Top 8 / Top 24 / élimination pour l'équipe ;
+- `outputs/<source>/equipes/<equipe>/points.png` : distribution du nombre de points finaux pour l'équipe ;
+- `outputs/<source>/equipes/<equipe>/matchs_cles.png` : Top 10 des matchs restants les plus importants pour l'équipe (avec l'écart en % entre le pire et le meilleur scénario) ;
 - `outputs/<source>/classement_global.png` : vue générale des probabilités de qualification des 36 équipes ;
 - `outputs/<source>/seuils_points_top_8_16_24.png` : distribution globale du nombre de points nécessaires pour finir dans le Top 8, le Top 16 et le Top 24 ;
 - `outputs/<source>/probabilites_equipes.csv` : tableau des probabilités Top 8, Top 24, barrages, élimination, points moyens et probabilité de chacune des 36 places.

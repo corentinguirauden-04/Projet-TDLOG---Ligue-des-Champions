@@ -21,17 +21,18 @@ from pathlib import Path
 import generate_outputs
 
 
-SOURCES = ("clubelo", "beyondelo", "manual")
+SOURCES = ("html", "clubelo", "beyondelo", "manual")
 
 
 def _prompt_source() -> str:
     """Demande la source Elo de manière interactive si aucun argument n'est fourni."""
     print("Choisis la source Elo :")
-    print("  1. clubelo")
-    print("  2. beyondelo")
-    print("  3. manual (Elo personnalisé)")
-    choice = input("Source [clubelo] : ").strip().lower()
-    mapping = {"": "clubelo", "1": "clubelo", "2": "beyondelo", "3": "manual"}
+    print("  1. html (HTML ClubElo local)")
+    print("  2. clubelo (API ClubElo)")
+    print("  3. beyondelo (API beyondELO)")
+    print("  4. manual (Elo personnalisé)")
+    choice = input("Source [html] : ").strip().lower()
+    mapping = {"": "html", "1": "html", "2": "clubelo", "3": "beyondelo", "4": "manual"}
     resolved = mapping.get(choice, choice)
     if resolved not in SOURCES:
         raise ValueError(f"Source invalide : {choice!r}. Choix possibles : {', '.join(SOURCES)}.")

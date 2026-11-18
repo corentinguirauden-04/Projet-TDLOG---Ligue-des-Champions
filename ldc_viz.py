@@ -104,7 +104,7 @@ def team_card(team, sim, table, path, n_sims=None, rank_dist=None, qualification
     # En-tête
     fig.text(0.07, 0.92, team.upper(), fontsize=30, fontweight="bold", color=TXT, va="center")
     fig.text(0.07, 0.855,
-             f"Classement actuel : {cur['rank']}e  ·  {cur['pts']} pts  ·  diff. {cur['gd']:+d}",
+             f"Classement actuel : {cur['rank']}e  ·  {cur['pts']} pts  ·  diff buts actuelle {cur['gd']:+d}",
              fontsize=12, color=MUTED, va="center")
 
     # Trois indicateurs demandés : Top 8, Top 24 et élimination.
@@ -220,10 +220,12 @@ def _draw_kpi_boxes(fig, boxes):
                                      facecolor=PANEL, edgecolor="none", zorder=1))
         fig.patches.append(Rectangle((x, 0.67), 0.006, 0.14, transform=fig.transFigure,
                                      facecolor=col, edgecolor="none", zorder=2))
+        title_size = 10 if len(title) <= 22 else 8.5
         val_size = 24 if len(val_text) <= 7 else 19
-        fig.text(x + 0.02, 0.785, title, fontsize=10, color=MUTED, fontweight="bold", va="center")
+        fig.text(x + 0.02, 0.785, title, fontsize=title_size, color=MUTED, fontweight="bold", va="center")
         fig.text(x + 0.02, 0.730, val_text, fontsize=val_size, color=col, fontweight="bold", va="center")
-        fig.text(x + w - 0.015, 0.690, sub, fontsize=8.5, color=MUTED, ha="right", va="center")
+        if sub:
+            fig.text(x + w - 0.015, 0.690, sub, fontsize=8.5, color=MUTED, ha="right", va="center")
 
 
 def _style_bar_axes(ax):
@@ -282,16 +284,16 @@ def team_points_card(team, sim, table, path, n_sims=None, qualifications=None):
     fig.text(
         0.07,
         0.855,
-        f"Classement actuel : {cur['rank']}e  ·  {cur['pts']} pts  ·  diff. {cur['gd']:+d}",
+        f"Classement actuel : {cur['rank']}e  ·  {cur['pts']} pts  ·  diff buts actuelle {cur['gd']:+d}",
         fontsize=12,
         color=MUTED,
         va="center",
     )
 
     boxes = [
-        ("POINTS MOYENS", "Espérance (ligne jaune)", f"{q['exp_pts']:.1f} pts", C_TOP8),
-        ("PLAGE PROBABLE (80 %)", "10e - 90e percentile", f"{p10:.0f} - {p90:.0f} pts", C_PLAY),
-        ("POINTS ACTUELS", f"Max : {max_possible} pts", f"{cur['pts']} pts", C_OUT),
+        ("POINTS MOYENS", f"Max : {max_possible} pts", f"{q['exp_pts']:.1f} pts", C_TOP8),
+        ("PLAGE PROBABLE (80 % DES SCÉNARIOS)", "", f"{p10:.0f} - {p90:.0f} pts", C_PLAY),
+        ("POINTS ACTUELS", "", f"{cur['pts']} pts", C_OUT),
     ]
     _draw_kpi_boxes(fig, boxes)
 

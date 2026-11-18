@@ -9,8 +9,8 @@
     python generate_outputs.py --source manual --elo-file mon_elo.json   # utilise un fichier JSON personnalisé -> outputs/manual/
 
 Le nombre de simulations est de 20 000 par défaut. Les images et le CSV sont
-enregistrés dans outputs/<source>/ (equipes/, equipes_points/, equipes_matchs/,
-classement_global.png, seuils_points_top_8_16_24.png, probabilites_equipes.csv).
+enregistrés dans outputs/<source>/ (equipes/<equipe>/, classement_global.png,
+seuils_points_top_8_16_24.png, probabilites_equipes.csv).
 """
 from __future__ import annotations
 
@@ -136,9 +136,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "-s",
         "--source",
-        choices=("clubelo", "beyondelo", "manual"),
-        default="clubelo",
-        help="Source Elo utilisée pour la simulation et le sous-dossier de sortie.",
+        choices=("html", "clubelo", "beyondelo", "manual"),
+        default="html",
+        help="Source Elo utilisée pour la simulation et le sous-dossier de sortie (défaut : html).",
     )
     parser.add_argument(
         "--elo-file",
@@ -183,12 +183,8 @@ def main(argv: list[str] | None = None) -> int:
 
     output_dir = OUTPUT_DIR / args.source
     team_output_dir = output_dir / "equipes"
-    points_output_dir = output_dir / "equipes_points"
-    matches_output_dir = output_dir / "equipes_matchs"
     output_dir.mkdir(parents=True, exist_ok=True)
     team_output_dir.mkdir(parents=True, exist_ok=True)
-    points_output_dir.mkdir(parents=True, exist_ok=True)
-    matches_output_dir.mkdir(parents=True, exist_ok=True)
 
     print(
         f"Lancement de {n_sims:,} simulations ({args.source}) "
@@ -202,15 +198,16 @@ def main(argv: list[str] | None = None) -> int:
     importance = sim_engine.match_importance(simulation)
     current_table = sim_engine.current_table()
 
-    # Fiches PNG par équipe (classement, points, Top 10 matchs importants).
+    # Un sous-dossier par équipe contenant ses 3 graphes (classement, points, matchs clés).
     for index, team in enumerate(sim_engine.TEAMS, start=1):
-        fname = f"{safe_filename(team)}.png"
-        image_path = team_output_dir / fname
+        team_dir_name = safe_filename(team)
+        per_team_dir = team_output_dir / team_dir_name
+        per_team_dir.mkdir(parents=True, exist_ok=True)
         viz.team_card(
             team,
             simulation,
             current_table,
-            image_path,
+            per_team_dir / "classement.png",
             n_sims=n_sims,
             rank_dist=rank_dist,
             qualifications=qualifications,
@@ -219,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
             team,
             simulation,
             current_table,
-            points_output_dir / fname,
+            per_team_dir / "points.png",
             n_sims=n_sims,
             qualifications=qualifications,
         )
@@ -227,11 +224,11 @@ def main(argv: list[str] | None = None) -> int:
             team,
             simulation,
             current_table,
-            matches_output_dir / fname,
+            per_team_dir / "matchs_cles.png",
             n_sims=n_sims,
             importance=importance,
         )
-        print(f"[{index:02d}/{len(sim_engine.TEAMS)}] Graphiques créés : {fname}")
+        print(f"[{index:02d}/{len(sim_engine.TEAMS)}] Graphiques créés : {team_dir_name}/")
 
     # Vues d'ensemble : probabilités de qualification + seuils de points Top 8 / 16 / 24.
     overview_path = output_dir / "classement_global.png"
@@ -247,9 +244,7 @@ def main(argv: list[str] | None = None) -> int:
     print("\nTerminé !")
     print(f"Source : {args.source}")
     print(f"Équipes traitées : {len(sim_engine.TEAMS)}")
-    print(f"Graphiques classements : {team_output_dir}")
-    print(f"Graphiques points : {points_output_dir}")
-    print(f"Graphiques matchs clés : {matches_output_dir}")
+    print(f"Dossiers par équipe : {team_output_dir}")
     print(f"Vue d'ensemble : {overview_path}")
     print(f"Seuils de points Top 8/16/24 : {thresholds_path}")
     print(f"Probabilités détaillées (CSV) : {csv_path}")

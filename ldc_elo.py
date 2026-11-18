@@ -454,9 +454,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "-s",
         "--source",
-        choices=("clubelo", "beyondelo"),
-        default="beyondelo",
-        help="Source API à utiliser si aucun fichier HTML n'est utilisé (défaut : beyondelo).",
+        choices=("html", "clubelo", "beyondelo"),
+        default="html",
+        help="Source à utiliser : html (fichiers locaux, défaut), clubelo (API) ou beyondelo (API).",
     )
     parser.add_argument(
         "targets",
@@ -470,8 +470,8 @@ def main(argv: list[str] | None = None) -> int:
     # Argument(s) HTML explicite(s) : le script lit exactement les fichiers fournis.
     html_args = [Path(arg).expanduser() for arg in targets if arg.lower().endswith((".html", ".htm"))]
     if html_args:
-        if parsed.source == "beyondelo":
-            print("L'option --source beyondelo ne s'utilise pas avec des fichiers HTML.", file=sys.stderr)
+        if parsed.source in ("clubelo", "beyondelo"):
+            print(f"L'option --source {parsed.source} ne s'utilise pas avec des fichiers HTML.", file=sys.stderr)
             return 2
         html_args = [p if p.is_absolute() or p.is_file() else HERE / p for p in html_args]
         missing_files = [str(p) for p in html_args if not p.is_file()]
@@ -484,15 +484,24 @@ def main(argv: list[str] | None = None) -> int:
         if len(targets) > 1:
             parser.print_usage(sys.stderr)
             return 2
+        if targets and parsed.source == "html":
+            print("Une date historique nécessite --source clubelo ou --source beyondelo.", file=sys.stderr)
+            return 2
         requested_date = targets[0] if targets else dt.date.today().isoformat()
         try:
             dt.date.fromisoformat(requested_date)
         except ValueError:
             parser.print_usage(sys.stderr)
             return 2
-        html_files = _find_local_html_files() if (not targets and parsed.source == "clubelo") else []
+        html_files = _find_local_html_files() if parsed.source == "html" else []
 
     records: list[tuple[str, float]] = []
+    if parsed.source == "html" and not html_files:
+        print(
+            "Aucun fichier HTML local trouvé (clubelo_ranking.html ou clubelo_*.html).",
+            file=sys.stderr,
+        )
+        return 1
     if html_files:
         print("Lecture des pages HTML ClubElo téléchargées :")
         for path in html_files:
