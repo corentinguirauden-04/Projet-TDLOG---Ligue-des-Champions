@@ -383,7 +383,7 @@ def _fetch_api_clubelo(date: str) -> str:
         url = f"{scheme}://api.clubelo.com/{date}"
         request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         try:
-            with urllib.request.urlopen(request, timeout=20) as response:
+            with urllib.request.urlopen(request, timeout=4) as response:
                 text = response.read().decode("utf-8-sig")
             if "Club" not in text.splitlines()[0] or "Elo" not in text.splitlines()[0]:
                 raise ValueError("La réponse ne ressemble pas au CSV ClubElo attendu")
@@ -533,11 +533,25 @@ def main(argv: list[str] | None = None) -> int:
             data_date = requested_date
         except Exception as exc:
             print(f"{api_label} indisponible : {exc}", file=sys.stderr)
-            if requested_date != dt.date.today().isoformat():
-                print("Une page HTML actuelle ne peut pas remplacer un classement historique.", file=sys.stderr)
-            elif parsed.source == "clubelo":
-                print("Télécharge la page ClubElo sous le nom clubelo_ranking.html puis relance.", file=sys.stderr)
-            return 1
+            fallback_html = _find_local_html_files() if parsed.source == "clubelo" else []
+            if fallback_html and requested_date == dt.date.today().isoformat():
+                print("Bascule automatique sur les pages HTML ClubElo locales :")
+                for path in fallback_html:
+                    try:
+                        html = _read_html_file(path)
+                        page_records, summary = extract_records_from_html(html)
+                        records.extend(page_records)
+                        print(f"  - {path.name} : {summary}")
+                    except Exception as html_exc:  # noqa: BLE001
+                        print(f"  - {path.name} : ERREUR : {html_exc}")
+                source = ", ".join(path.name for path in fallback_html)
+                data_date = dt.date.today().isoformat()
+            else:
+                if requested_date != dt.date.today().isoformat():
+                    print("Une page HTML actuelle ne peut pas remplacer un classement historique.", file=sys.stderr)
+                elif parsed.source == "clubelo":
+                    print("Télécharge la page ClubElo sous le nom clubelo_ranking.html puis relance.", file=sys.stderr)
+                return 1
 
     elo, missing, matched = match_project_teams(records)
     print(f"\nÉquipes reconnues : {len(elo)}/{len(CLUBELO_NAMES)}")

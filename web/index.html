@@ -1,0 +1,1971 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ligue des Champions 2026-27 — Observatoire & Projections</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-top: #14217a;
+      --bg-mid: #0c1454;
+      --bg: #060b33;
+      --surface: rgba(255, 255, 255, 0.065);
+      --surface-strong: rgba(255, 255, 255, 0.11);
+      --surface-hover: rgba(255, 255, 255, 0.15);
+      --border: rgba(169, 183, 238, 0.2);
+      --border-strong: rgba(169, 183, 238, 0.4);
+      --txt: #ffffff;
+      --muted: #a9b7ee;
+      --top8: #2de2c5;
+      --top8-soft: rgba(45, 226, 197, 0.15);
+      --play: #ffc857;
+      --play-soft: rgba(255, 200, 87, 0.15);
+      --out: #ff5d8f;
+      --out-soft: rgba(255, 93, 143, 0.15);
+      --ink: #060b33;
+      --radius-lg: 16px;
+      --radius-md: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 14px 36px rgba(3, 6, 26, 0.45);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      font-family: "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
+      color: var(--txt);
+      background:
+        radial-gradient(circle at 15% 10%, rgba(45, 226, 197, 0.12), transparent 32%),
+        radial-gradient(circle at 85% 18%, rgba(255, 200, 87, 0.09), transparent 30%),
+        linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 45%, var(--bg) 100%) fixed;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      font-variant-numeric: tabular-nums;
+    }
+
+    h1, h2, h3, .font-display {
+      font-family: "Outfit", "Segoe UI", sans-serif;
+      letter-spacing: -0.01em;
+    }
+
+    /* Barre de navigation supérieure */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      backdrop-filter: blur(18px);
+      background: rgba(6, 11, 51, 0.85);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .topbar-inner {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 14px 24px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+    }
+
+    .brand-badge {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--top8), #3b82f6);
+      color: var(--ink);
+      font-family: "Outfit", sans-serif;
+      font-weight: 800;
+      font-size: 1.05rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 16px rgba(45, 226, 197, 0.35);
+    }
+
+    .brand-title {
+      font-family: "Outfit", sans-serif;
+      font-weight: 800;
+      font-size: 1.18rem;
+      letter-spacing: 0.01em;
+    }
+
+    .brand-sub {
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .nav-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 5px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+
+    .nav-tab {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-family: "Outfit", sans-serif;
+      font-weight: 600;
+      font-size: 0.9rem;
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.18s ease;
+    }
+
+    .nav-tab:hover {
+      color: var(--txt);
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .nav-tab.active {
+      background: var(--top8);
+      color: var(--ink);
+      font-weight: 700;
+      box-shadow: 0 4px 14px rgba(45, 226, 197, 0.3);
+    }
+
+    /* Barre de réglage du modèle */
+    .settings-bar {
+      max-width: 1360px;
+      margin: 18px auto 0;
+      padding: 0 24px;
+    }
+
+    .settings-card {
+      background: var(--surface);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 12px 18px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .control-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .control-label {
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+
+    .pill-group {
+      display: inline-flex;
+      flex-wrap: wrap;
+      background: rgba(6, 11, 51, 0.65);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      gap: 4px;
+    }
+
+    .pill-btn {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      padding: 6px 14px;
+      border-radius: 7px;
+      font-size: 0.86rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease;
+    }
+
+    .pill-btn:hover {
+      color: var(--txt);
+    }
+
+    .pill-btn.active {
+      background: var(--surface-strong);
+      color: var(--txt);
+      box-shadow: inset 0 0 0 1px var(--top8);
+    }
+
+    select, input[type="number"], input[type="search"] {
+      background: rgba(6, 11, 51, 0.78);
+      color: var(--txt);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 12px;
+      font-family: inherit;
+      font-size: 0.88rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    select:focus, input:focus {
+      border-color: var(--top8);
+    }
+
+    .btn-action {
+      border: none;
+      background: linear-gradient(135deg, var(--play), #ffae34);
+      color: var(--ink);
+      font-family: "Outfit", sans-serif;
+      font-weight: 700;
+      font-size: 0.88rem;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      text-align: center;
+      transition: transform 0.12s, filter 0.15s;
+    }
+
+    .btn-action:hover:not(:disabled) {
+      filter: brightness(1.06);
+      transform: translateY(-1px);
+    }
+
+    .btn-action:disabled {
+      opacity: 0.55;
+      cursor: wait;
+    }
+
+    .btn-ghost {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--txt);
+      font-weight: 600;
+      font-size: 0.85rem;
+      padding: 7px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+    }
+
+    .btn-ghost:hover {
+      background: var(--surface-hover);
+      border-color: var(--border-strong);
+    }
+
+    .btn-ghost.active {
+      background: var(--top8);
+      color: var(--ink);
+      border-color: var(--top8);
+      font-weight: 700;
+    }
+
+    .toast-status {
+      font-size: 0.84rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .toast-status.ok { color: var(--top8); }
+    .toast-status.err { color: var(--out); }
+
+    /* Panneau d'édition de l'indice personnalisé */
+    .manual-editor-drawer {
+      display: none;
+      margin-top: 14px;
+      background: rgba(6, 11, 51, 0.88);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      padding: 20px 22px;
+      box-shadow: var(--shadow);
+    }
+
+    .manual-editor-drawer.open {
+      display: block;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .rules-box {
+      background: rgba(45, 226, 197, 0.08);
+      border: 1px solid rgba(45, 226, 197, 0.28);
+      border-left: 4px solid var(--top8);
+      border-radius: 10px;
+      padding: 13px 16px;
+      margin: 12px 0 16px;
+      font-size: 0.87rem;
+      color: var(--txt);
+    }
+
+    .rules-box ul {
+      margin-top: 6px;
+      padding-left: 18px;
+      color: var(--muted);
+    }
+
+    .rules-box li {
+      margin-bottom: 4px;
+    }
+
+    .elo-inputs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+      gap: 10px;
+      max-height: 360px;
+      overflow-y: auto;
+      padding: 4px 6px 4px 0;
+      margin-bottom: 16px;
+    }
+
+    .elo-input-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 7px 10px;
+    }
+
+    .elo-input-item.modified {
+      border-color: var(--play);
+      background: rgba(255, 200, 87, 0.1);
+    }
+
+    .elo-input-item label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .elo-input-item input {
+      width: 78px;
+      text-align: center;
+      font-weight: 700;
+      padding: 5px 6px;
+    }
+
+    /* Conteneur principal */
+    .main-container {
+      max-width: 1360px;
+      margin: 22px auto 64px;
+      padding: 0 24px;
+    }
+
+    .page-view {
+      display: none;
+      animation: fadeIn 0.22s ease;
+    }
+
+    .page-view.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Section Hero & Paliers clés (Page Accueil) */
+    .hero-banner {
+      background: linear-gradient(135deg, rgba(20, 33, 122, 0.72), rgba(6, 11, 51, 0.88));
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 26px 30px;
+      margin-bottom: 24px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero-banner h1 {
+      font-size: 1.85rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .hero-banner p {
+      color: var(--muted);
+      max-width: 68ch;
+      font-size: 0.95rem;
+      text-align: justify;
+      hyphens: auto;
+    }
+
+    .section-title {
+      font-size: 1.28rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-desc {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 16px;
+    }
+
+    .tiers-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+      gap: 16px;
+      margin-bottom: 30px;
+    }
+
+    .tier-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-top: 4px solid var(--top8);
+      border-radius: var(--radius-md);
+      padding: 18px 20px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .tier-card.play { border-top-color: var(--play); }
+    .tier-card.out { border-top-color: var(--out); }
+
+    .tier-head {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .tier-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-family: "Outfit", sans-serif;
+      font-size: 0.74rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 4px 11px;
+      border-radius: 999px;
+      background: var(--top8-soft);
+      color: var(--top8);
+      line-height: 1.2;
+    }
+
+    .tier-card.play .tier-badge {
+      background: var(--play-soft);
+      color: var(--play);
+    }
+
+    .tier-card.out .tier-badge {
+      background: var(--out-soft);
+      color: var(--out);
+    }
+
+    .tier-title {
+      font-family: "Outfit", sans-serif;
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+
+    .tier-explain {
+      font-size: 0.85rem;
+      color: var(--muted);
+      text-align: justify;
+      hyphens: auto;
+      min-height: 40px;
+    }
+
+    .club-mini-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: auto;
+    }
+
+    .club-mini-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: rgba(6, 11, 51, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 10px 13px;
+      cursor: pointer;
+      transition: all 0.14s ease;
+      color: var(--txt);
+      text-align: left;
+      font-family: inherit;
+    }
+
+    .club-mini-item:hover {
+      background: var(--surface-hover);
+      border-color: var(--border-strong);
+      transform: translateX(3px);
+    }
+
+    .club-mini-name {
+      font-weight: 700;
+      font-size: 0.94rem;
+    }
+
+    .club-mini-meta {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .club-mini-stat {
+      font-family: "Outfit", sans-serif;
+      font-weight: 800;
+      font-size: 1.08rem;
+      color: var(--top8);
+      min-width: 54px;
+      text-align: right;
+    }
+
+    .tier-card.play .club-mini-stat { color: var(--play); }
+    .tier-card.out .club-mini-stat { color: var(--out); }
+
+    /* Focus Clubs Français */
+    .fr-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .fr-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 18px 20px;
+      cursor: pointer;
+      transition: all 0.16s ease;
+      box-shadow: var(--shadow);
+    }
+
+    .fr-card:hover {
+      background: var(--surface-hover);
+      border-color: var(--top8);
+      transform: translateY(-2px);
+    }
+
+    .fr-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .fr-club-name {
+      font-family: "Outfit", sans-serif;
+      font-size: 1.35rem;
+      font-weight: 800;
+    }
+
+    .fr-kpis {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      text-align: center;
+      background: rgba(6, 11, 51, 0.55);
+      padding: 12px 10px;
+      border-radius: 8px;
+    }
+
+    .fr-kpi-val {
+      font-family: "Outfit", sans-serif;
+      font-size: 1.18rem;
+      font-weight: 800;
+    }
+
+    .fr-kpi-lab {
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    /* Page 2 : Explorateur par Club */
+    .explorer-layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    @media (max-width: 960px) {
+      .explorer-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .sidebar-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .club-list-scroll {
+      max-height: 580px;
+      overflow-y: auto;
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding-right: 4px;
+    }
+
+    .club-side-btn {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      border: none;
+      background: transparent;
+      color: var(--txt);
+      padding: 8px 11px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 0.88rem;
+      cursor: pointer;
+      text-align: left;
+      transition: background 0.12s;
+    }
+
+    .club-side-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .club-side-btn.active {
+      background: var(--top8);
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .club-header-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 20px 24px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .club-header-top {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .club-big-title {
+      font-size: 2rem;
+      font-weight: 800;
+    }
+
+    .club-kpis-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+      gap: 12px;
+    }
+
+    .stat-tile {
+      background: rgba(6, 11, 51, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-top: 3px solid var(--top8);
+      border-radius: 10px;
+      padding: 13px 14px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .stat-tile.play { border-top-color: var(--play); }
+    .stat-tile.out { border-top-color: var(--out); }
+
+    .stat-tile-label {
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .stat-tile-val {
+      font-family: "Outfit", sans-serif;
+      font-size: 1.65rem;
+      font-weight: 800;
+      margin-top: 4px;
+      text-align: center;
+    }
+
+    .chart-stage {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 18px 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .chart-subtabs {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .chart-caption {
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin-bottom: 14px;
+      padding: 11px 15px;
+      background: rgba(6, 11, 51, 0.5);
+      border-radius: 8px;
+      border-left: 3px solid var(--top8);
+      text-align: justify;
+      hyphens: auto;
+    }
+
+    .single-chart-wrap img {
+      width: 100%;
+      max-height: 620px;
+      object-fit: contain;
+      border-radius: 10px;
+      display: block;
+      margin: 0 auto;
+      background: var(--bg);
+      cursor: zoom-in;
+    }
+
+    .triple-chart-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 16px;
+    }
+
+    .triple-chart-grid img {
+      width: 100%;
+      border-radius: 8px;
+      display: block;
+      cursor: zoom-in;
+    }
+
+    /* Tableau & Vues globales */
+    .card-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 20px 22px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+
+    th, td {
+      padding: 11px 10px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    th.num, td.num {
+      text-align: center;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      user-select: none;
+    }
+
+    th.sortable {
+      cursor: pointer;
+      transition: color 0.15s;
+    }
+
+    th.sortable:hover {
+      color: var(--txt);
+    }
+
+    tbody tr {
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+
+    tbody tr:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .bar-stack {
+      display: flex;
+      height: 10px;
+      width: 140px;
+      margin: 0 auto;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .seg-top8 { background: var(--top8); }
+    .seg-play { background: var(--play); }
+    .seg-out { background: var(--out); }
+
+    /* Face-à-Face / Comparateur */
+    .duel-grid {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 18px;
+      align-items: center;
+      margin: 18px 0 22px;
+    }
+
+    @media (max-width: 820px) {
+      .duel-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .duel-side {
+      background: rgba(6, 11, 51, 0.6);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 18px;
+      text-align: center;
+    }
+
+    .duel-vs {
+      font-family: "Outfit", sans-serif;
+      font-weight: 800;
+      font-size: 1.4rem;
+      color: var(--play);
+      text-align: center;
+      padding: 0 8px;
+    }
+
+    .duel-Comp-table td, .duel-Comp-table th {
+      text-align: center;
+    }
+
+    /* Calendrier */
+    .matches-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(285px, 1fr));
+      gap: 10px;
+    }
+
+    .match-pill {
+      background: rgba(6, 11, 51, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.88rem;
+    }
+
+    .match-score {
+      font-family: "Outfit", sans-serif;
+      font-weight: 800;
+      padding: 3px 10px;
+      border-radius: 6px;
+      background: var(--surface-strong);
+      color: var(--top8);
+      text-align: center;
+      min-width: 52px;
+    }
+
+    .match-j {
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-weight: 700;
+      margin-right: 8px;
+    }
+
+    /* Page À propos & Méthodologie */
+    .prose-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 18px;
+    }
+
+    .prose-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 22px 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .prose-card h3 {
+      font-size: 1.15rem;
+      margin-bottom: 10px;
+      color: var(--top8);
+    }
+
+    .prose-card p, .prose-card li {
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin-bottom: 8px;
+      text-align: justify;
+      hyphens: auto;
+    }
+
+    .prose-card ul {
+      padding-left: 18px;
+    }
+
+    /* Lightbox Zoom */
+    .lightbox {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(4, 7, 32, 0.92);
+      backdrop-filter: blur(10px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      cursor: zoom-out;
+    }
+
+    .lightbox.open {
+      display: flex;
+    }
+
+    .lightbox img {
+      max-width: 95vw;
+      max-height: 92vh;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation principale -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand" onclick="navigateTo('page-home')">
+        <div class="brand-badge">LDC</div>
+        <div>
+          <div class="brand-title">OBSERVATOIRE LIGUE DES CHAMPIONS</div>
+          <div class="brand-sub">Saison 2026-2027 · Projections après la 4e journée</div>
+        </div>
+      </div>
+
+      <nav class="nav-tabs" id="main-nav">
+        <button class="nav-tab active" data-page="page-home" type="button">Accueil & Repères</button>
+        <button class="nav-tab" data-page="page-club" type="button">Explorateur par Club</button>
+        <button class="nav-tab" data-page="page-standings" type="button">Classement & Seuils</button>
+        <button class="nav-tab" data-page="page-duel" type="button">Comparateur Face-à-Face</button>
+        <button class="nav-tab" data-page="page-calendar" type="button">Calendrier & Scores</button>
+        <button class="nav-tab" data-page="page-about" type="button">Méthodologie & À propos</button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Barre de configuration : Modèle de classement & Précision -->
+  <div class="settings-bar">
+    <div class="settings-card">
+      <div class="control-row">
+        <span class="control-label">Indice de force des clubs :</span>
+        <div class="pill-group" id="source-buttons"></div>
+        <button id="toggle-manual-editor" class="btn-ghost" type="button" style="display: none;">
+          Personnaliser les 36 notes ▾
+        </button>
+      </div>
+
+      <div class="control-row">
+        <label class="control-label" for="n-sims">Scénarios simulés :</label>
+        <select id="n-sims">
+          <option value="5000">5 000 (Rapide)</option>
+          <option value="20000" selected>20 000 (Standard)</option>
+          <option value="50000">50 000 (Précis)</option>
+          <option value="100000">100 000 (Haute précision)</option>
+        </select>
+        <button id="run-sim-btn" class="btn-action" type="button">Recalculer les projections</button>
+        <span id="status-bar" class="toast-status"></span>
+      </div>
+    </div>
+
+    <!-- Tiroir d'édition des notes personnalisées (visible en mode Personnalisé) -->
+    <div id="manual-editor-drawer" class="manual-editor-drawer">
+      <div class="chart-subtabs" style="margin-bottom: 6px;">
+        <div>
+          <h3 class="font-display" style="font-size: 1.15rem;">Éditeur de l'indice personnalisé (36 clubs)</h3>
+          <p class="brand-sub">Ajustez librement le niveau estimé de chaque club puis lancez le calcul pour observer l'effet sur la compétition.</p>
+        </div>
+        <div class="control-row">
+          <input id="elo-editor-search" type="search" placeholder="Filtrer un club...">
+          <button id="reset-default-elo-btn" class="btn-ghost" type="button">Remettre aux valeurs par défaut</button>
+          <button id="save-manual-elo-btn" class="btn-action" type="button">Appliquer & Recalculer</button>
+        </div>
+      </div>
+
+      <div class="rules-box">
+        <strong>Règles à respecter pour remplir les notes :</strong>
+        <ul>
+          <li><strong>Valeurs autorisées :</strong> chaque club doit avoir un <strong>nombre entier compris entre 500 et 3 000</strong> (aucune case ne peut être laissée vide).</li>
+          <li><strong>Repères d'échelle :</strong> environ <strong>1 550</strong> pour un petit club européen, <strong>1 800</strong> pour un club régulier de Ligue des Champions, et <strong>2 000 à 2 150</strong> pour les grands favoris au titre.</li>
+          <li><strong>Effet d'un écart :</strong> une différence de <strong>+100 points</strong> équivaut approximativement à l'avantage de recevoir à domicile (~64 % de chances de victoire hors match nul). Les valeurs modifiées par rapport aux notes par défaut s'affichent en ambre.</li>
+        </ul>
+      </div>
+
+      <div id="elo-inputs-grid" class="elo-inputs-grid"></div>
+    </div>
+  </div>
+
+  <!-- Contenu principal -->
+  <main class="main-container">
+
+    <!-- PAGE 1 : ACCUEIL & REPÈRES CLÉS -->
+    <section id="page-home" class="page-view active">
+      <div class="hero-banner">
+        <div>
+          <h1>Qui rejoindra les huitièmes de finale ?</h1>
+          <p>
+            À mi-parcours de la phase de ligue (4 journées disputées sur 8), explorez les chances de qualification
+            de chacun des 36 clubs européens, le nombre de points nécessaires à chaque palier et les affiches les plus décisives.
+          </p>
+        </div>
+        <button class="btn-action" type="button" onclick="navigateTo('page-club')">Explorer un club →</button>
+      </div>
+
+      <h2 class="section-title">Les 4 paliers clés de la phase de ligue</h2>
+      <p class="section-desc">Cliquez sur n'importe quel club pour ouvrir sa fiche détaillée et ses graphiques.</p>
+      <div id="tiers-container" class="tiers-grid"></div>
+
+      <h2 class="section-title">Focus Clubs Français</h2>
+      <p class="section-desc">Situation et perspectives de qualification pour le PSG, Lille et Lens.</p>
+      <div id="french-container" class="fr-grid"></div>
+    </section>
+
+    <!-- PAGE 2 : EXPLORATEUR PAR CLUB -->
+    <section id="page-club" class="page-view">
+      <div class="explorer-layout">
+        <!-- Colonne gauche : sélection rapide d'un club -->
+        <aside class="sidebar-panel">
+          <input id="club-search" type="search" placeholder="Rechercher un club..." style="width: 100%;">
+          <div id="club-sidebar-list" class="club-list-scroll"></div>
+        </aside>
+
+        <!-- Colonne droite : fiche du club sélectionné -->
+        <div>
+          <div class="club-header-card">
+            <div class="club-header-top">
+              <div>
+                <div class="club-big-title" id="club-title">PSG</div>
+                <div class="brand-sub" id="club-subtitle">Situation réelle après 4 journées</div>
+              </div>
+              <div class="control-row">
+                <button id="prev-team" class="btn-ghost" type="button">← Club précédent</button>
+                <button id="next-team" class="btn-ghost" type="button">Club suivant →</button>
+              </div>
+            </div>
+            <div id="club-kpis" class="club-kpis-row"></div>
+          </div>
+
+          <div class="chart-stage">
+            <div class="chart-subtabs">
+              <div class="pill-group" id="club-chart-tabs">
+                <button class="pill-btn active" data-chart="classement" type="button">1. Classement final projeté</button>
+                <button class="pill-btn" data-chart="points" type="button">2. Nombre de points attendus</button>
+                <button class="pill-btn" data-chart="matchs_cles" type="button">3. Les 10 matchs décisifs</button>
+                <button class="pill-btn" data-chart="all" type="button">Voir les 3 ensemble</button>
+              </div>
+              <span class="brand-sub">Astuce : cliquez sur un graphique pour l'agrandir</span>
+            </div>
+
+            <div id="club-chart-caption" class="chart-caption"></div>
+            <div id="club-chart-display"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PAGE 3 : CLASSEMENT & SEUILS GLOBAUX -->
+    <section id="page-standings" class="page-view">
+      <div class="card-panel">
+        <div class="chart-subtabs">
+          <div>
+            <h2 class="section-title">Projections globales des 36 clubs</h2>
+            <p class="section-desc" style="margin-bottom: 0;">Cliquez sur l'en-tête d'une colonne pour trier les clubs ou basculez sur les graphiques globaux.</p>
+          </div>
+          <div class="pill-group" id="standings-subtabs">
+            <button class="pill-btn active" data-sub="sub-table" type="button">Tableau interactif</button>
+            <button class="pill-btn" data-sub="sub-overview" type="button">Vue d'ensemble (Graphique)</button>
+            <button class="pill-btn" data-sub="sub-thresholds" type="button">Points requis (Top 8 / 16 / 24)</button>
+          </div>
+        </div>
+
+        <!-- Sous-vue 1 : Tableau -->
+        <div id="sub-table">
+          <div class="control-row" style="margin: 14px 0;">
+            <button class="btn-ghost active" data-filter="all" type="button">Tous les clubs (36)</button>
+            <button class="btn-ghost" data-filter="top8" type="button">Favoris Top 8 (≥ 50 %)</button>
+            <button class="btn-ghost" data-filter="playoff" type="button">En course pour les Barrages</button>
+            <button class="btn-ghost" data-filter="out" type="button">En danger d'élimination</button>
+            <button class="btn-ghost" data-filter="fr" type="button">Clubs français</button>
+          </div>
+          <div style="overflow-x: auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th class="num sortable" data-sort="cur_rank">Rang J4</th>
+                  <th class="sortable" data-sort="team">Club</th>
+                  <th class="num sortable" data-sort="cur_pts">Pts actuels (Diff.)</th>
+                  <th class="num sortable" data-sort="top1">1re place</th>
+                  <th class="num sortable" data-sort="top8">Top 8 (Direct)</th>
+                  <th class="num sortable" data-sort="playoff">Barrages (9e-24e)</th>
+                  <th class="num sortable" data-sort="out">Élimination</th>
+                  <th class="num sortable" data-sort="exp_pts">Points finaux attendus ↓</th>
+                  <th class="num">Profil de qualification</th>
+                </tr>
+              </thead>
+              <tbody id="teams-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Sous-vue 2 : Classement global PNG -->
+        <div id="sub-overview" style="display: none; margin-top: 16px;">
+          <div class="chart-caption">
+            Vue synthétique des 36 équipes : probabilité de qualification directe en 8es (vert), de passage par les barrages (jaune) ou d'élimination (rose).
+          </div>
+          <div class="single-chart-wrap">
+            <img id="img-global-overview" src="" alt="Vue globale des 36 clubs">
+          </div>
+        </div>
+
+        <!-- Sous-vue 3 : Seuils de points PNG -->
+        <div id="sub-thresholds" style="display: none; margin-top: 16px;">
+          <div class="chart-caption">
+            Combien de points faut-il viser ? Ce graphique montre la distribution du total de points du 8e (Top 8), du 16e (tête de série en barrages) et du 24e (dernier qualifié).
+          </div>
+          <div class="single-chart-wrap">
+            <img id="img-global-thresholds" src="" alt="Seuils de points Top 8 / 16 / 24">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PAGE 4 : COMPARATEUR FACE-À-FACE -->
+    <section id="page-duel" class="page-view">
+      <div class="card-panel">
+        <h2 class="section-title">Comparateur Face-à-Face entre deux clubs</h2>
+        <p class="section-desc">Comparez directement les trajectoires de deux clubs et visualisez leurs distributions côte à côte.</p>
+
+        <div class="duel-grid">
+          <div class="duel-side">
+            <div class="control-label" style="margin-bottom: 8px;">Club A</div>
+            <select id="duel-club-a" style="width: 100%; max-width: 260px; text-align: center; font-weight: 700;"></select>
+          </div>
+          <div class="duel-vs">VS</div>
+          <div class="duel-side">
+            <div class="control-label" style="margin-bottom: 8px;">Club B</div>
+            <select id="duel-club-b" style="width: 100%; max-width: 260px; text-align: center; font-weight: 700;"></select>
+          </div>
+        </div>
+
+        <div id="duel-summary-table" style="overflow-x: auto; margin-bottom: 20px;"></div>
+        <div id="duel-charts" class="triple-chart-grid" style="grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));"></div>
+      </div>
+    </section>
+
+    <!-- PAGE 5 : CALENDRIER & RÉSULTATS -->
+    <section id="page-calendar" class="page-view">
+      <div class="card-panel">
+        <div class="chart-subtabs">
+          <div>
+            <h2 class="section-title">Calendrier de la phase de ligue (144 matchs)</h2>
+            <p class="section-desc" style="margin-bottom: 0;">Consultez les résultats des journées J1 à J4 et les affiches restantes des journées J5 à J8.</p>
+          </div>
+          <div class="control-row">
+            <select id="calendar-club-filter">
+              <option value="">Tous les clubs (36)</option>
+            </select>
+            <div class="pill-group" id="calendar-mode">
+              <button class="pill-btn active" data-cal="remaining" type="button">Matchs à venir (J5–J8)</button>
+              <button class="pill-btn" data-cal="played" type="button">Résultats joués (J1–J4)</button>
+            </div>
+          </div>
+        </div>
+        <div id="calendar-list" class="matches-grid" style="margin-top: 16px;"></div>
+      </div>
+    </section>
+
+    <!-- PAGE 6 : MÉTHODOLOGIE & À PROPOS -->
+    <section id="page-about" class="page-view">
+      <div class="hero-banner">
+        <div>
+          <h1>Comment fonctionnent nos projections ?</h1>
+          <p>
+            Cette application combine les résultats réels de la Ligue des Champions avec une modélisation statistique
+            de toutes les rencontres restantes afin d'estimer les chances de chaque club.
+          </p>
+        </div>
+      </div>
+
+      <div class="prose-grid">
+        <div class="prose-card">
+          <h3>1. Le format de la phase de ligue</h3>
+          <p>Les 36 clubs sont réunis dans un classement unique et disputent chacun 8 rencontres (4 à domicile, 4 à l'extérieur) contre 8 adversaires différents :</p>
+          <ul>
+            <li><strong>Places 1 à 8 (Top 8) :</strong> qualification directe pour les huitièmes de finale.</li>
+            <li><strong>Places 9 à 16 (Top 16) :</strong> barrages à élimination directe en tant que tête de série (match retour à domicile).</li>
+            <li><strong>Places 17 à 24 (Top 24) :</strong> barrages à élimination directe (non tête de série).</li>
+            <li><strong>Places 25 à 36 :</strong> élimination définitive de toutes les compétitions européennes.</li>
+          </ul>
+        </div>
+
+        <div class="prose-card">
+          <h3>2. Les 3 indices de niveau des clubs</h3>
+          <p>Pour évaluer la force intrinsèque de chaque équipe avant un match, trois sources peuvent être comparées :</p>
+          <ul>
+            <li><strong>ClubElo :</strong> l'indice historique de référence du football européen, fondé sur les résultats passés et l'écart de buts.</li>
+            <li><strong>beyondELO :</strong> un indice étendu (inspiré du modèle Glicko) qui ajuste la réactivité du score selon l'incertitude (<em>Rating Deviation</em>) et mesure un avantage du terrain propre à chaque stade.</li>
+            <li><strong>Personnalisé :</strong> un jeu de notes modifiable directement depuis l'interface pour tester vos propres hypothèses sur le niveau des équipes.</li>
+          </ul>
+        </div>
+
+        <div class="prose-card">
+          <h3>3. Simulation des matchs restants</h3>
+          <p>Pour chaque scénario simulé, les 72 matchs déjà joués (J1 à J4) sont conservés tels quels, puis les 72 matchs restants (J5 à J8) sont joués virtuellement :</p>
+          <ul>
+            <li>L'écart de niveau entre les deux équipes (avec un bonus pour l'équipe à domicile) détermine le nombre moyen de buts attendus de chaque côté.</li>
+            <li>Les scores exacts sont tirés aléatoirement selon une loi de Poisson, ce qui reproduit fidèlement la fréquence des victoires, des matchs nuls et des surprises.</li>
+            <li>Après chaque rencontre simulée, l'indice des deux clubs évolue selon le résultat avant de jouer la journée suivante.</li>
+          </ul>
+        </div>
+
+        <div class="prose-card">
+          <h3>4. Comment sont identifiés les « 10 matchs décisifs » ?</h3>
+          <p>Sur la fiche de chaque club, le graphique des <strong>Matchs clés</strong> classe les 72 rencontres restantes selon leur influence sur l'avenir du club :</p>
+          <ul>
+            <li>On compare la probabilité de qualification du club (pour le Top 8 ou le Top 24) selon que le match se termine par une victoire à domicile, un nul ou une victoire à l'extérieur.</li>
+            <li>Plus l'écart entre le scénario le plus favorable et le plus défavorable est grand (par exemple passer de 84 % à 99 %, soit <strong>15 % d'écart</strong>), plus le match est décisif.</li>
+            <li>Cela révèle non seulement les propres matchs du club, mais aussi les chocs entre concurrents directs dont le résultat peut libérer une place qualificative.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Lightbox pour agrandir n'importe quel graphique -->
+  <div id="lightbox" class="lightbox" onclick="this.classList.remove('open')">
+    <img id="lightbox-img" src="" alt="Graphique agrandi">
+  </div>
+
+  <script>
+    const state = {
+      sources: [],
+      activeSource: "beyondelo",
+      outputFolder: "beyondelo",
+      available: true,
+      teams: [],
+      played: [],
+      remaining: [],
+      defaultElo: {},
+      manualElo: {},
+      selectedTeam: "PSG",
+      duelA: "PSG",
+      duelB: "Bayern",
+      activeChart: "classement",
+      tableFilter: "all",
+      sortKey: "exp_pts",
+      sortDesc: true,
+      calMode: "remaining",
+      calClub: "",
+      cacheBust: Date.now(),
+    };
+
+    const frenchClubs = new Set(["PSG", "Lille", "Lens"]);
+
+    const chartDescriptions = {
+      classement: "Probabilité pour le club de terminer à chacune des 36 places finales (vert : qualification directe en 8es, jaune : barrages, rose : élimination).",
+      points: "Distribution du total de points en fin de phase de ligue. La ligne pointillée indique la moyenne attendue et l'encadré central couvre 80 % des scénarios.",
+      matchs_cles: "Les 10 rencontres à venir (parmi tous les matchs de la compétition) dont l'issue fait le plus varier les chances de qualification du club.",
+      all: "Vue complète réunissant les trois graphiques du club côte à côte.",
+    };
+
+    function pct(val) {
+      const p = val * 100;
+      if (p > 0 && p < 0.5) return "<1 %";
+      if (p < 100 && p > 99.5) return ">99 %";
+      return `${Math.round(p)} %`;
+    }
+
+    function setStatus(msg, kind = "") {
+      const el = document.getElementById("status-bar");
+      el.textContent = msg;
+      el.className = "toast-status" + (kind ? ` ${kind}` : "");
+    }
+
+    function openLightbox(src) {
+      const lb = document.getElementById("lightbox");
+      document.getElementById("lightbox-img").src = src;
+      lb.classList.add("open");
+    }
+
+    function navigateTo(pageId) {
+      document.querySelectorAll("#main-nav .nav-tab").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.page === pageId);
+      });
+      document.querySelectorAll(".page-view").forEach(sec => {
+        sec.classList.toggle("active", sec.id === pageId);
+      });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function selectClubAndOpen(teamName) {
+      state.selectedTeam = teamName;
+      renderClubExplorer();
+      navigateTo("page-club");
+    }
+
+    async function loadState(source = null) {
+      const query = source ? `?source=${encodeURIComponent(source)}` : "";
+      const res = await fetch(`/api/state${query}`);
+      const data = await res.json();
+
+      state.sources = data.sources;
+      state.activeSource = data.active_source;
+      state.outputFolder = data.output_folder;
+      state.available = data.available;
+      state.teams = data.teams || [];
+      state.played = data.played || [];
+      state.remaining = data.remaining || [];
+      state.defaultElo = data.default_elo || {};
+      state.manualElo = { ...(data.manual_elo || {}) };
+
+      if (state.teams.length > 0 && !state.teams.some(t => t.team === state.selectedTeam)) {
+        state.selectedTeam = state.teams[0].team;
+      }
+
+      const toggleBtn = document.getElementById("toggle-manual-editor");
+      const drawer = document.getElementById("manual-editor-drawer");
+      if (state.activeSource === "manual") {
+        toggleBtn.style.display = "inline-block";
+      } else {
+        toggleBtn.style.display = "none";
+        drawer.classList.remove("open");
+      }
+
+      renderSourceButtons();
+      renderManualEditor();
+      renderHomeTiers();
+      renderFrenchFocus();
+      renderClubExplorer();
+      renderStandingsPage();
+      renderDuelSelectors();
+      renderDuelPage();
+      renderCalendarFilter();
+      renderCalendar();
+    }
+
+    function renderSourceButtons() {
+      const box = document.getElementById("source-buttons");
+      box.innerHTML = "";
+      for (const src of state.sources) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "pill-btn" + (src.id === state.activeSource ? " active" : "");
+        btn.textContent = src.label;
+        btn.onclick = () => {
+          setStatus("");
+          loadState(src.id);
+        };
+        box.appendChild(btn);
+      }
+    }
+
+    function renderManualEditor() {
+      const grid = document.getElementById("elo-inputs-grid");
+      const filter = (document.getElementById("elo-editor-search").value || "").toLowerCase();
+      const clubs = Object.keys(state.defaultElo).sort((a, b) => a.localeCompare(b, "fr"));
+
+      grid.innerHTML = clubs
+        .filter(c => c.toLowerCase().includes(filter))
+        .map(club => {
+          const val = state.manualElo[club] ?? state.defaultElo[club];
+          const isMod = val !== state.defaultElo[club];
+          return `
+            <div class="elo-input-item ${isMod ? "modified" : ""}" data-club-box="${club}">
+              <label title="${club} (Défaut : ${state.defaultElo[club]})">${club}</label>
+              <input type="number" min="500" max="3000" step="1" value="${val}" data-club-elo="${club}">
+            </div>
+          `;
+        })
+        .join("");
+
+      grid.querySelectorAll("input[data-club-elo]").forEach(inp => {
+        inp.oninput = () => {
+          const club = inp.dataset.clubElo;
+          const num = parseInt(inp.value, 10);
+          if (!Number.isNaN(num)) {
+            state.manualElo[club] = num;
+          }
+          const box = inp.closest(".elo-input-item");
+          box.classList.toggle("modified", num !== state.defaultElo[club]);
+        };
+      });
+    }
+
+    function renderHomeTiers() {
+      const box = document.getElementById("tiers-container");
+      if (!state.available || state.teams.length === 0) {
+        box.innerHTML = "";
+        return;
+      }
+
+      const byTop1 = [...state.teams].sort((a, b) => b.top1 - a.top1).slice(0, 3);
+      const byTop8Border = [...state.teams]
+        .sort((a, b) => Math.abs(a.top8 - 0.5) - Math.abs(b.top8 - 0.5))
+        .slice(0, 3);
+      const byTop16 = [...state.teams]
+        .filter(t => t.top8 < 0.75 && t.top24 > 0.5)
+        .sort((a, b) => b.top16 - a.top16)
+        .slice(0, 3);
+      const byTop24Border = [...state.teams]
+        .sort((a, b) => Math.abs(a.top24 - 0.5) - Math.abs(b.top24 - 0.5))
+        .slice(0, 3);
+
+      const cards = [
+        {
+          cls: "",
+          badge: "1re place",
+          title: "Favoris pour la 1re place",
+          explain: "Les clubs ayant la plus forte probabilité de terminer en tête de la phase de ligue.",
+          items: byTop1.map(t => ({
+            team: t.team,
+            meta: `Actuel : ${t.cur_rank}e (${t.cur_pts} pts) · Proj. : ${t.exp_pts.toFixed(1)} pts`,
+            stat: pct(t.top1),
+          })),
+        },
+        {
+          cls: "",
+          badge: "Top 8 — Qualification directe",
+          title: "La bataille pour le Top 8",
+          explain: "Les équipes au coude-à-coude autour de la 8e place qualificative directe (~16 pts).",
+          items: byTop8Border.map(t => ({
+            team: t.team,
+            meta: `Actuel : ${t.cur_rank}e (${t.cur_pts} pts) · Proj. : ${t.exp_pts.toFixed(1)} pts`,
+            stat: pct(t.top8),
+          })),
+        },
+        {
+          cls: "play",
+          badge: "Top 16 — Têtes de série",
+          title: "Au cœur du peloton",
+          explain: "Solides candidats aux barrages ayant de fortes chances de finir entre la 9e et la 16e place (~12 pts).",
+          items: byTop16.map(t => ({
+            team: t.team,
+            meta: `Actuel : ${t.cur_rank}e (${t.cur_pts} pts) · Top 16 : ${pct(t.top16)}`,
+            stat: pct(t.top16),
+          })),
+        },
+        {
+          cls: "out",
+          badge: "Top 24 — Qualification aux barrages",
+          title: "Sur le fil du rasoir",
+          explain: "Les clubs dont le destin bascule entre la qualification en barrages (24e) et l'élimination (~9 pts).",
+          items: byTop24Border.map(t => ({
+            team: t.team,
+            meta: `Actuel : ${t.cur_rank}e (${t.cur_pts} pts) · Proj. : ${t.exp_pts.toFixed(1)} pts`,
+            stat: pct(t.top24),
+          })),
+        },
+      ];
+
+      box.innerHTML = cards
+        .map(c => `
+          <div class="tier-card ${c.cls}">
+            <div class="tier-head">
+              <span class="tier-badge">${c.badge}</span>
+              <div class="tier-title">${c.title}</div>
+            </div>
+            <p class="tier-explain">${c.explain}</p>
+            <div class="club-mini-list">
+              ${c.items
+                .map(it => `
+                  <button type="button" class="club-mini-item" data-team="${it.team}">
+                    <div>
+                      <div class="club-mini-name">${it.team}</div>
+                      <div class="club-mini-meta">${it.meta}</div>
+                    </div>
+                    <div class="club-mini-stat">${it.stat}</div>
+                  </button>
+                `)
+                .join("")}
+            </div>
+          </div>
+        `)
+        .join("");
+
+      box.querySelectorAll(".club-mini-item").forEach(btn => {
+        btn.onclick = () => selectClubAndOpen(btn.dataset.team);
+      });
+    }
+
+    function renderFrenchFocus() {
+      const box = document.getElementById("french-container");
+      const frTeams = state.teams.filter(t => frenchClubs.has(t.team));
+      box.innerHTML = frTeams
+        .map(t => `
+          <div class="fr-card" data-team="${t.team}">
+            <div class="fr-card-top">
+              <div>
+                <div class="fr-club-name">${t.team}</div>
+                <div class="club-mini-meta">Classement J4 : ${t.cur_rank}e (${t.cur_pts} pts, diff. ${t.cur_gd >= 0 ? "+" : ""}${t.cur_gd})</div>
+              </div>
+              <span class="tier-badge">${t.exp_pts.toFixed(1)} pts attendus</span>
+            </div>
+            <div class="fr-kpis">
+              <div>
+                <div class="fr-kpi-val" style="color: var(--top8);">${pct(t.top8)}</div>
+                <div class="fr-kpi-lab">Top 8 direct</div>
+              </div>
+              <div>
+                <div class="fr-kpi-val" style="color: var(--play);">${pct(t.playoff)}</div>
+                <div class="fr-kpi-lab">Barrages</div>
+              </div>
+              <div>
+                <div class="fr-kpi-val" style="color: var(--out);">${pct(t.out)}</div>
+                <div class="fr-kpi-lab">Élimination</div>
+              </div>
+            </div>
+          </div>
+        `)
+        .join("");
+
+      box.querySelectorAll(".fr-card").forEach(card => {
+        card.onclick = () => selectClubAndOpen(card.dataset.team);
+      });
+    }
+
+    function renderClubExplorer() {
+      const searchVal = (document.getElementById("club-search").value || "").toLowerCase();
+      const sideList = document.getElementById("club-sidebar-list");
+
+      const visibleTeams = state.teams.filter(t => t.team.toLowerCase().includes(searchVal));
+      sideList.innerHTML = visibleTeams
+        .map(t => `
+          <button type="button" class="club-side-btn ${t.team === state.selectedTeam ? "active" : ""}" data-team="${t.team}">
+            <span>${t.team}</span>
+            <span style="opacity: 0.78; font-size: 0.8rem;">${t.exp_pts.toFixed(1)} pts</span>
+          </button>
+        `)
+        .join("");
+
+      sideList.querySelectorAll(".club-side-btn").forEach(btn => {
+        btn.onclick = () => {
+          state.selectedTeam = btn.dataset.team;
+          renderClubExplorer();
+        };
+      });
+
+      const club = state.teams.find(t => t.team === state.selectedTeam) || state.teams[0];
+      if (!club) return;
+
+      document.getElementById("club-title").textContent = club.team;
+      const gdSign = club.cur_gd >= 0 ? "+" : "";
+      document.getElementById("club-subtitle").textContent =
+        `Situation après 4 journées : ${club.cur_rank}e place · ${club.cur_pts} points · Différence de buts ${gdSign}${club.cur_gd} (${club.cur_gf} BP, ${club.cur_ga} BC)`;
+
+      document.getElementById("club-kpis").innerHTML = `
+        <div class="stat-tile">
+          <div class="stat-tile-label">8es de finale directs (Top 8)</div>
+          <div class="stat-tile-val" style="color: var(--top8);">${pct(club.top8)}</div>
+        </div>
+        <div class="stat-tile play">
+          <div class="stat-tile-label">Barrages (Places 9 à 24)</div>
+          <div class="stat-tile-val" style="color: var(--play);">${pct(club.playoff)}</div>
+        </div>
+        <div class="stat-tile out">
+          <div class="stat-tile-label">Élimination (25e à 36e)</div>
+          <div class="stat-tile-val" style="color: var(--out);">${pct(club.out)}</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-tile-label">Total de points projeté</div>
+          <div class="stat-tile-val">${club.exp_pts.toFixed(1)} pts</div>
+        </div>
+      `;
+
+      document.getElementById("club-chart-caption").textContent = chartDescriptions[state.activeChart];
+
+      const base = `/outputs/${state.outputFolder}/equipes/${club.slug}`;
+      const q = `?t=${state.cacheBust}`;
+      const display = document.getElementById("club-chart-display");
+
+      if (state.activeChart === "all") {
+        display.innerHTML = `
+          <div class="triple-chart-grid">
+            <img src="${base}/classement.png${q}" alt="Classement ${club.team}" onclick="openLightbox(this.src)">
+            <img src="${base}/points.png${q}" alt="Points ${club.team}" onclick="openLightbox(this.src)">
+            <img src="${base}/matchs_cles.png${q}" alt="Matchs clés ${club.team}" onclick="openLightbox(this.src)">
+          </div>
+        `;
+      } else {
+        const src = `${base}/${state.activeChart}.png${q}`;
+        display.innerHTML = `
+          <div class="single-chart-wrap">
+            <img src="${src}" alt="${state.activeChart} ${club.team}" onclick="openLightbox(this.src)">
+          </div>
+        `;
+      }
+    }
+
+    function renderStandingsPage() {
+      const q = `?t=${state.cacheBust}`;
+      const ovImg = document.getElementById("img-global-overview");
+      const thImg = document.getElementById("img-global-thresholds");
+      ovImg.src = `/outputs/${state.outputFolder}/classement_global.png${q}`;
+      thImg.src = `/outputs/${state.outputFolder}/seuils_points_top_8_16_24.png${q}`;
+      ovImg.onclick = () => openLightbox(ovImg.src);
+      thImg.onclick = () => openLightbox(thImg.src);
+
+      const filtered = state.teams.filter(t => {
+        if (state.tableFilter === "top8") return t.top8 >= 0.5;
+        if (state.tableFilter === "playoff") return t.playoff >= 0.4;
+        if (state.tableFilter === "out") return t.out >= 0.4;
+        if (state.tableFilter === "fr") return frenchClubs.has(t.team);
+        return true;
+      });
+
+      const key = state.sortKey;
+      const mult = state.sortDesc ? -1 : 1;
+      filtered.sort((a, b) => {
+        if (key === "team") return mult * a.team.localeCompare(b.team, "fr");
+        return mult * ((a[key] || 0) - (b[key] || 0));
+      });
+
+      const tbody = document.getElementById("teams-tbody");
+      tbody.innerHTML = filtered
+        .map(t => {
+          const gdSign = t.cur_gd >= 0 ? "+" : "";
+          return `
+            <tr data-team="${t.team}">
+              <td class="num"><strong>${t.cur_rank}e</strong></td>
+              <td><strong>${t.team}</strong></td>
+              <td class="num">${t.cur_pts} pts <span style="color: var(--muted);">(${gdSign}${t.cur_gd})</span></td>
+              <td class="num">${pct(t.top1)}</td>
+              <td class="num" style="color: var(--top8); font-weight: 700;">${pct(t.top8)}</td>
+              <td class="num" style="color: var(--play); font-weight: 700;">${pct(t.playoff)}</td>
+              <td class="num" style="color: var(--out); font-weight: 700;">${pct(t.out)}</td>
+              <td class="num"><strong>${t.exp_pts.toFixed(1)} pts</strong></td>
+              <td class="num">
+                <div class="bar-stack">
+                  <div class="seg-top8" style="width:${(t.top8 * 100).toFixed(1)}%"></div>
+                  <div class="seg-play" style="width:${(t.playoff * 100).toFixed(1)}%"></div>
+                  <div class="seg-out" style="width:${(t.out * 100).toFixed(1)}%"></div>
+                </div>
+              </td>
+            </tr>
+          `;
+        })
+        .join("");
+
+      tbody.querySelectorAll("tr[data-team]").forEach(row => {
+        row.onclick = () => selectClubAndOpen(row.dataset.team);
+      });
+    }
+
+    function renderDuelSelectors() {
+      const selA = document.getElementById("duel-club-a");
+      const selB = document.getElementById("duel-club-b");
+      const names = [...state.teams].map(t => t.team).sort((a, b) => a.localeCompare(b, "fr"));
+      const opts = names.map(n => `<option value="${n}">${n}</option>`).join("");
+      selA.innerHTML = opts;
+      selB.innerHTML = opts;
+      if (names.includes(state.duelA)) selA.value = state.duelA;
+      if (names.includes(state.duelB)) selB.value = state.duelB;
+    }
+
+    function renderDuelPage() {
+      const a = state.teams.find(t => t.team === state.duelA) || state.teams[0];
+      const b = state.teams.find(t => t.team === state.duelB) || state.teams[1] || state.teams[0];
+      if (!a || !b) return;
+
+      const tbl = document.getElementById("duel-summary-table");
+      tbl.innerHTML = `
+        <table class="duel-Comp-table">
+          <thead>
+            <tr>
+              <th>${a.team}</th>
+              <th>Indicateur</th>
+              <th>${b.team}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>${a.cur_rank}e (${a.cur_pts} pts)</strong></td>
+              <td style="color: var(--muted);">Classement actuel (J4)</td>
+              <td><strong>${b.cur_rank}e (${b.cur_pts} pts)</strong></td>
+            </tr>
+            <tr>
+              <td style="color: var(--top8); font-weight: 700;">${pct(a.top8)}</td>
+              <td style="color: var(--muted);">Qualification directe (Top 8)</td>
+              <td style="color: var(--top8); font-weight: 700;">${pct(b.top8)}</td>
+            </tr>
+            <tr>
+              <td style="color: var(--play); font-weight: 700;">${pct(a.playoff)}</td>
+              <td style="color: var(--muted);">Barrages (Places 9 à 24)</td>
+              <td style="color: var(--play); font-weight: 700;">${pct(b.playoff)}</td>
+            </tr>
+            <tr>
+              <td style="color: var(--out); font-weight: 700;">${pct(a.out)}</td>
+              <td style="color: var(--muted);">Élimination (Places 25 à 36)</td>
+              <td style="color: var(--out); font-weight: 700;">${pct(b.out)}</td>
+            </tr>
+            <tr>
+              <td><strong>${a.exp_pts.toFixed(1)} pts</strong></td>
+              <td style="color: var(--muted);">Points finaux attendus</td>
+              <td><strong>${b.exp_pts.toFixed(1)} pts</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      `;
+
+      const q = `?t=${state.cacheBust}`;
+      document.getElementById("duel-charts").innerHTML = `
+        <div>
+          <img src="/outputs/${state.outputFolder}/equipes/${a.slug}/classement.png${q}" alt="${a.team}" onclick="openLightbox(this.src)">
+        </div>
+        <div>
+          <img src="/outputs/${state.outputFolder}/equipes/${b.slug}/classement.png${q}" alt="${b.team}" onclick="openLightbox(this.src)">
+        </div>
+      `;
+    }
+
+    function renderCalendarFilter() {
+      const sel = document.getElementById("calendar-club-filter");
+      const currentVal = sel.value;
+      const names = [...state.teams].map(t => t.team).sort((a, b) => a.localeCompare(b, "fr"));
+      sel.innerHTML = `<option value="">Tous les clubs (36)</option>` +
+        names.map(n => `<option value="${n}">${n}</option>`).join("");
+      sel.value = currentVal;
+    }
+
+    function renderCalendar() {
+      const box = document.getElementById("calendar-list");
+      const list = state.calMode === "played" ? state.played : state.remaining;
+      const filtered = list.filter(m => !state.calClub || m.home === state.calClub || m.away === state.calClub);
+
+      box.innerHTML = filtered
+        .map(m => {
+          const right = state.calMode === "played"
+            ? `<span class="match-score">${m.hg} - ${m.ag}</span>`
+            : `<span class="tier-badge">À venir</span>`;
+          return `
+            <div class="match-pill">
+              <div>
+                <span class="match-j">J${m.matchday}</span>
+                <strong>${m.home}</strong> - ${m.away}
+              </div>
+              ${right}
+            </div>
+          `;
+        })
+        .join("");
+    }
+
+    /* Écouteurs d'événements */
+    document.querySelectorAll("#main-nav .nav-tab").forEach(btn => {
+      btn.onclick = () => navigateTo(btn.dataset.page);
+    });
+
+    document.getElementById("toggle-manual-editor").onclick = () => {
+      document.getElementById("manual-editor-drawer").classList.toggle("open");
+    };
+
+    document.getElementById("elo-editor-search").oninput = () => renderManualEditor();
+
+    document.getElementById("reset-default-elo-btn").onclick = async () => {
+      const res = await fetch("/api/reset-manual", { method: "POST" });
+      const data = await res.json();
+      if (data.ok) {
+        state.manualElo = { ...data.manual_elo };
+        renderManualEditor();
+        setStatus("Valeurs remises par défaut. Cliquez sur « Appliquer & Recalculer » pour régénérer les graphiques.", "ok");
+      }
+    };
+
+    async function triggerSimulation(customElo = null) {
+      const btn = document.getElementById("run-sim-btn");
+      const saveBtn = document.getElementById("save-manual-elo-btn");
+      const nSims = parseInt(document.getElementById("n-sims").value, 10) || 20000;
+      btn.disabled = true;
+      saveBtn.disabled = true;
+      setStatus(`Calcul de ${nSims.toLocaleString("fr-FR")} scénarios en cours...`);
+
+      try {
+        const body = { source: state.activeSource, n_sims: nSims };
+        if (customElo) body.custom_elo = customElo;
+
+        const res = await fetch("/api/simulate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          setStatus(data.error || "Impossible de recalculer les projections.", "err");
+          return;
+        }
+        state.cacheBust = Date.now();
+        await loadState(state.activeSource);
+        setStatus(`Projections mises à jour (${nSims.toLocaleString("fr-FR")} scénarios).`, "ok");
+      } catch (err) {
+        setStatus("Erreur de connexion au serveur.", "err");
+      } finally {
+        btn.disabled = false;
+        saveBtn.disabled = false;
+      }
+    }
+
+    document.getElementById("run-sim-btn").onclick = () => triggerSimulation(null);
+
+    document.getElementById("save-manual-elo-btn").onclick = () => {
+      for (const [club, val] of Object.entries(state.manualElo)) {
+        if (!Number.isInteger(val) || val < 500 || val > 3000) {
+          setStatus(`Valeur invalide pour ${club} : entrez un nombre entier entre 500 et 3 000.`, "err");
+          return;
+        }
+      }
+      triggerSimulation(state.manualElo);
+    };
+
+    document.getElementById("club-search").oninput = () => renderClubExplorer();
+
+    document.getElementById("prev-team").onclick = () => {
+      if (!state.teams.length) return;
+      const idx = state.teams.findIndex(t => t.team === state.selectedTeam);
+      state.selectedTeam = state.teams[(idx - 1 + state.teams.length) % state.teams.length].team;
+      renderClubExplorer();
+    };
+
+    document.getElementById("next-team").onclick = () => {
+      if (!state.teams.length) return;
+      const idx = state.teams.findIndex(t => t.team === state.selectedTeam);
+      state.selectedTeam = state.teams[(idx + 1) % state.teams.length].team;
+      renderClubExplorer();
+    };
+
+    document.querySelectorAll("#club-chart-tabs .pill-btn").forEach(btn => {
+      btn.onclick = () => {
+        state.activeChart = btn.dataset.chart;
+        document.querySelectorAll("#club-chart-tabs .pill-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        renderClubExplorer();
+      };
+    });
+
+    document.querySelectorAll("#standings-subtabs .pill-btn").forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll("#standings-subtabs .pill-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        for (const id of ["sub-table", "sub-overview", "sub-thresholds"]) {
+          document.getElementById(id).style.display = (id === btn.dataset.sub) ? "block" : "none";
+        }
+      };
+    });
+
+    document.querySelectorAll("#sub-table [data-filter]").forEach(btn => {
+      btn.onclick = () => {
+        state.tableFilter = btn.dataset.filter;
+        document.querySelectorAll("#sub-table [data-filter]").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        renderStandingsPage();
+      };
+    });
+
+    document.querySelectorAll("th.sortable").forEach(th => {
+      th.onclick = () => {
+        const key = th.dataset.sort;
+        if (state.sortKey === key) {
+          state.sortDesc = !state.sortDesc;
+        } else {
+          state.sortKey = key;
+          state.sortDesc = (key !== "cur_rank" && key !== "team");
+        }
+        renderStandingsPage();
+      };
+    });
+
+    document.getElementById("duel-club-a").onchange = (e) => {
+      state.duelA = e.target.value;
+      renderDuelPage();
+    };
+
+    document.getElementById("duel-club-b").onchange = (e) => {
+      state.duelB = e.target.value;
+      renderDuelPage();
+    };
+
+    document.getElementById("calendar-club-filter").onchange = (e) => {
+      state.calClub = e.target.value;
+      renderCalendar();
+    };
+
+    document.querySelectorAll("#calendar-mode .pill-btn").forEach(btn => {
+      btn.onclick = () => {
+        state.calMode = btn.dataset.cal;
+        document.querySelectorAll("#calendar-mode .pill-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        renderCalendar();
+      };
+    });
+
+    loadState();
+  </script>
+</body>
+</html>

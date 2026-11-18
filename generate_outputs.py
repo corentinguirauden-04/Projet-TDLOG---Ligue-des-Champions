@@ -172,9 +172,13 @@ def main(argv: list[str] | None = None) -> int:
     if status != 0:
         return status
 
-    # Import tardif afin que ldc_data lise le elo.json mis à jour ci-dessus.
+    # Import (ou rechargement si déjà importé par un serveur) pour lire le bon elo.json.
+    import ldc_data
+    importlib.reload(ldc_data)
     import ldc_sim as sim_engine
+    importlib.reload(sim_engine)
     import ldc_viz as viz
+    importlib.reload(viz)
 
     # Vérification des données avant de lancer les calculs.
     if not sim_engine.TEAMS:
