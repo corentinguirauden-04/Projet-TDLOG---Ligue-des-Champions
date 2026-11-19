@@ -210,7 +210,7 @@ La vectorisation NumPy permet de traiter de nombreux scénarios dans des tableau
 | `prob_objectives(sim, objectives)` | Calcule la probabilité que plusieurs objectifs soient atteints simultanément. |
 | `points_thresholds(sim, positions)` | Calcule la distribution des points du club qui finit à certaines places (8e, 9e, 16e, etc.). |
 | `qualification_by_points(sim)` | Calcule pour chaque total de points (0 à 24) la probabilité de finir Top 8, en barrages ou éliminé. |
-| `match_importance(sim)` | Mesure pour chaque équipe l'impact de chaque match restant sur ses chances de Top 8 ou Top 24 selon les 3 issues possibles (`1` / `N` / `2`). |
+| `match_importance(sim)` | Mesure pour chaque équipe le plus grand écart de classement final moyen (en places) entre les 3 issues possibles (`1` / `N` / `2`) de chaque match restant. |
 
 Exécuter directement le module lance un exemple de 20 000 simulations et affiche les dix équipes avec la plus forte probabilité de finir dans le Top 8 :
 
@@ -243,7 +243,7 @@ for club, valeurs in sorted(
 | `points_thresholds_card(sim, path, n_sims=None)` | Vue globale des seuils : barres empilées à 100 % donnant la probabilité de qualification directe, barrages ou élimination selon le nombre de points. |
 | `team_card(team, sim, table, path, n_sims=None)` | Fiche d'une équipe : distribution des 36 places possibles et trois indicateurs de qualification. |
 | `team_points_card(team, sim, table, path, n_sims=None)` | Fiche d'une équipe : distribution des points finaux, moyenne, plage probable (10e–90e percentile) et points actuels/max. |
-| `team_important_matches_card(team, sim, table, path, n_sims=None)` | Fiche d'une équipe : Top 10 des matchs restants les plus décisifs (les siens et ceux des concurrents), avec l'écart de probabilité (en %) entre le pire et le meilleur résultat (`1` / `N` / `2`) pour le Top 8 ou le Top 24. |
+| `team_important_matches_card(team, sim, table, path, n_sims=None)` | Fiche d'une équipe : Top 10 des matchs restants les plus décisifs (les siens et ceux des concurrents), classés par le plus grand écart de classement final moyen (en places) entre les 3 issues (`1` / `N` / `2`). |
 | `objectives_card(sim, objectives, path)` | Fiche de scénario : probabilité de chaque objectif et probabilité jointe que tous soient atteints. |
 
 Exemple d'utilisation pour générer trois images :
@@ -315,7 +315,7 @@ Par défaut, le script réalise **100 000 simulations Monte Carlo** (graine alé
 
 - `outputs/<source>/equipes/<equipe>/classement.png` : distribution des places finales (de la 36e à gauche à la 1re à droite) et probabilités Top 8 / Top 24 / élimination pour l'équipe ;
 - `outputs/<source>/equipes/<equipe>/points.png` : distribution du nombre de points finaux pour l'équipe (moyenne en vert, plage probable 80 % en jaune) ;
-- `outputs/<source>/equipes/<equipe>/matchs_cles.png` : Top 10 des matchs restants les plus importants pour l'équipe (avec l'écart en % entre le pire et le meilleur scénario) ;
+- `outputs/<source>/equipes/<equipe>/matchs_cles.png` : Top 10 des matchs restants les plus importants pour l'équipe (écart maximal de classement final moyen en places selon l'issue du match) ;
 - `outputs/<source>/classement_global.png` : vue générale des probabilités de qualification des 36 équipes ;
 - `outputs/<source>/seuils_points_top_8_16_24.png` : graphique empilé à 100 % des probabilités d'issue finale (Top 8 / barrages / éliminé) selon le nombre de points ;
 - `outputs/<source>/probabilites_equipes.csv` : tableau des probabilités Top 8, Top 24, barrages, élimination, points moyens et probabilité de chacune des 36 places.

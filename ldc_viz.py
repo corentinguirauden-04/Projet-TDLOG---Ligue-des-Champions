@@ -360,19 +360,18 @@ def team_important_matches_card(team, sim, table, path, n_sims=None, importance=
 
     ordered = list(reversed(top_matches))
     labels = [f"{m['home']} - {m['away']}" for m in ordered]
-    vals = [100.0 * m["importance"] for m in ordered]
+    vals = [m["importance"] for m in ordered]
     cols = [C_TOP8 if m["is_own"] else C_PLAY for m in ordered]
 
     fig = _new_fig((12, 6.75))
-    ax = fig.add_axes([0.27, 0.14, 0.40, 0.63], facecolor="none")
+    ax = fig.add_axes([0.27, 0.14, 0.42, 0.63], facecolor="none")
     y = np.arange(len(labels))
     ax.barh(y, vals, color=cols, height=0.62, zorder=3)
 
-    x_max = max(max(vals, default=5.0) * 1.08, 5.0)
+    x_max = max(max(vals, default=1.0) * 1.08, 1.0)
     for yi, m, v in zip(y, ordered, vals):
-        p_lo = 100.0 * m["min_prob"]
-        p_hi = 100.0 * m["max_prob"]
-        txt = f"{v:.1f} % ({m['zone']} : {p_lo:.1f} % → {p_hi:.1f} %)"
+        unit = "place" if round(v, 1) <= 1.0 else "places"
+        txt = f"{v:.1f} {unit} (rang moyen : {m['worst_rank']:.1f}e → {m['best_rank']:.1f}e)"
         ax.text(v + x_max * 0.025, yi, txt, va="center", fontsize=9, color=TXT, fontweight="bold")
 
     ax.set_xlim(0, x_max)
@@ -402,7 +401,7 @@ def team_important_matches_card(team, sim, table, path, n_sims=None, importance=
     fig.text(
         0.07,
         0.055,
-        "Écart (en %) entre le pire et le meilleur scénario pour le Top 8 ou le Top 24 selon le résultat du match (1 / N / 2).",
+        "Plus grand écart de classement final moyen (en places) entre les 3 issues possibles du match (1 / N / 2).",
         fontsize=9,
         color=MUTED,
         va="center",

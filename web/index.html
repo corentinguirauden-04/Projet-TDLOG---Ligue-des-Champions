@@ -1289,11 +1289,11 @@
 
         <div class="prose-card">
           <h3>4. Comment sont identifiés les « 10 matchs décisifs » ?</h3>
-          <p>Sur la fiche de chaque club, le graphique des <strong>Matchs clés</strong> classe les 72 rencontres restantes selon leur influence sur l'avenir du club :</p>
+          <p>Sur la fiche de chaque club, le graphique des <strong>Matchs clés</strong> classe les 72 rencontres restantes selon leur impact sur le classement final du club :</p>
           <ul>
-            <li>On compare la probabilité de qualification du club (pour le Top 8 ou le Top 24) selon que le match se termine par une victoire à domicile, un nul ou une victoire à l'extérieur.</li>
-            <li>Plus l'écart entre le scénario le plus favorable et le plus défavorable est grand (par exemple passer de 84 % à 99 %, soit <strong>15 % d'écart</strong>), plus le match est décisif.</li>
-            <li>Cela révèle non seulement les propres matchs du club, mais aussi les chocs entre concurrents directs dont le résultat peut libérer une place qualificative.</li>
+            <li>Pour chaque match, on calcule le classement moyen du club dans trois cas : victoire à domicile, match nul, ou victoire à l'extérieur.</li>
+            <li>On mesure ensuite le plus grand écart de classement (en places) entre ces trois issues (du pire au meilleur cas).</li>
+            <li>Cela met en lumière non seulement les propres matchs du club, mais aussi les affiches entre concurrents directs dont l'issue fait le plus bouger sa position au classement.</li>
           </ul>
         </div>
       </div>
@@ -1334,7 +1334,7 @@
     const chartDescriptions = {
       classement: "Probabilité pour le club de terminer à chacune des 36 places finales, de la 36e place à gauche jusqu'à la 1re place à droite (rose : élimination, jaune : barrages, vert : Top 8 direct).",
       points: "Distribution du total de points en fin de phase de ligue. Le trait pointillé vert indique la moyenne attendue et les barres jaunes représentent la plage probable (80 % des scénarios).",
-      matchs_cles: "Les 10 rencontres à venir (parmi tous les matchs de la compétition) dont l'issue fait le plus varier les chances de qualification du club.",
+      matchs_cles: "Les 10 rencontres à venir (parmi tous les matchs de la compétition) qui créent le plus grand écart de classement final moyen pour le club selon leur issue (1 / N / 2).",
       all: "Vue complète réunissant les trois graphiques du club côte à côte.",
     };
 
