@@ -8,7 +8,7 @@
     python generate_outputs.py --source manual                           # utilise DEFAULT_ELO de ldc_data.py -> outputs/manual/
     python generate_outputs.py --source manual --elo-file mon_elo.json   # utilise un fichier JSON personnalisé -> outputs/manual/
 
-Le nombre de simulations est de 20 000 par défaut. Les images et le CSV sont
+Le nombre de simulations est de 100 000 par défaut. Les images et le CSV sont
 enregistrés dans outputs/<source>/ (equipes/<equipe>/, classement_global.png,
 seuils_points_top_8_16_24.png, probabilites_equipes.csv).
 """
@@ -28,7 +28,7 @@ import ldc_elo
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = BASE_DIR / "outputs"
 ELO_FILE = BASE_DIR / "elo.json"
-DEFAULT_N_SIMS = 20_000
+DEFAULT_N_SIMS = 100_000
 SEED = 42
 
 
@@ -131,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
         nargs="?",
         type=int,
         default=DEFAULT_N_SIMS,
-        help="Nombre de simulations Monte Carlo (défaut : 20000).",
+        help="Nombre de simulations Monte Carlo (défaut : 100000).",
     )
     parser.add_argument(
         "-s",

@@ -267,9 +267,9 @@ class LdcRequestHandler(BaseHTTPRequestHandler):
         if source not in SOURCES:
             self._send_json({"ok": False, "error": f"Modèle inconnu : {source}"}, status=HTTPStatus.BAD_REQUEST)
             return
-        if not 100 <= n_sims <= 500_000:
+        if not 100 <= n_sims <= 1_000_000:
             self._send_json(
-                {"ok": False, "error": "Choisis entre 100 et 500 000 simulations."},
+                {"ok": False, "error": "Choisis entre 100 et 1 000 000 simulations."},
                 status=HTTPStatus.BAD_REQUEST,
             )
             return

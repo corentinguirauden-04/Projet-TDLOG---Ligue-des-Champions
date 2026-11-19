@@ -1026,10 +1026,11 @@
       <div class="control-row">
         <label class="control-label" for="n-sims">Scénarios simulés :</label>
         <select id="n-sims">
-          <option value="5000">5 000 (Rapide)</option>
-          <option value="20000" selected>20 000 (Standard)</option>
-          <option value="50000">50 000 (Précis)</option>
-          <option value="100000">100 000 (Haute précision)</option>
+          <option value="20000">20 000 (Rapide)</option>
+          <option value="100000" selected>100 000 (Standard)</option>
+          <option value="250000">250 000 (Précis)</option>
+          <option value="500000">500 000 (Très précis)</option>
+          <option value="1000000">1 000 000 (Ultra précis)</option>
         </select>
         <button id="run-sim-btn" class="btn-action" type="button">Recalculer les projections</button>
         <span id="status-bar" class="toast-status"></span>
@@ -1188,7 +1189,7 @@
         <!-- Sous-vue 3 : Seuils de points PNG -->
         <div id="sub-thresholds" style="display: none; margin-top: 16px;">
           <div class="chart-caption">
-            Combien de points faut-il viser ? Ce graphique montre la distribution du total de points du 8e (Top 8), du 16e (tête de série en barrages) et du 24e (dernier qualifié).
+            Combien de points faut-il viser ? Pour chaque total final de points, ce graphique empilé indique la probabilité de terminer directement en 8es (vert), en barrages (jaune) ou éliminé (rose).
           </div>
           <div class="single-chart-wrap">
             <img id="img-global-thresholds" src="" alt="Seuils de points Top 8 / 16 / 24">
@@ -1331,17 +1332,19 @@
     const frenchClubs = new Set(["PSG", "Lille", "Lens"]);
 
     const chartDescriptions = {
-      classement: "Probabilité pour le club de terminer à chacune des 36 places finales (vert : qualification directe en 8es, jaune : barrages, rose : élimination).",
-      points: "Distribution du total de points en fin de phase de ligue. La ligne pointillée indique la moyenne attendue et l'encadré central couvre 80 % des scénarios.",
+      classement: "Probabilité pour le club de terminer à chacune des 36 places finales, de la 36e place à gauche jusqu'à la 1re place à droite (rose : élimination, jaune : barrages, vert : Top 8 direct).",
+      points: "Distribution du total de points en fin de phase de ligue. Le trait pointillé vert indique la moyenne attendue et les barres jaunes représentent la plage probable (80 % des scénarios).",
       matchs_cles: "Les 10 rencontres à venir (parmi tous les matchs de la compétition) dont l'issue fait le plus varier les chances de qualification du club.",
       all: "Vue complète réunissant les trois graphiques du club côte à côte.",
     };
 
     function pct(val) {
       const p = val * 100;
-      if (p > 0 && p < 0.5) return "<1 %";
-      if (p < 100 && p > 99.5) return ">99 %";
-      return `${Math.round(p)} %`;
+      if (p === 0) return "0.0 %";
+      if (p < 0.05) return "<0.1 %";
+      if (p === 100) return "100.0 %";
+      if (p > 99.95) return ">99.9 %";
+      return `${p.toFixed(1)} %`;
     }
 
     function setStatus(msg, kind = "") {
@@ -1841,7 +1844,7 @@
     async function triggerSimulation(customElo = null) {
       const btn = document.getElementById("run-sim-btn");
       const saveBtn = document.getElementById("save-manual-elo-btn");
-      const nSims = parseInt(document.getElementById("n-sims").value, 10) || 20000;
+      const nSims = parseInt(document.getElementById("n-sims").value, 10) || 100000;
       btn.disabled = true;
       saveBtn.disabled = true;
       setStatus(`Calcul de ${nSims.toLocaleString("fr-FR")} scénarios en cours...`);

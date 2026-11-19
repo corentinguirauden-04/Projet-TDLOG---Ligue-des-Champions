@@ -44,13 +44,17 @@ def _zone_color(place):
 
 
 def pct(x):
-    """Pourcentage lisible : '<1 %' pour les très faibles probabilités, '>99 %' pour les très fortes."""
+    """Pourcentage lisible à 1 décimale ('<0.1 %' / '>99.9 %' aux extrêmes)."""
     p = 100 * x
-    if p < 0.5:
-        return "<1 %" if p > 0 else "0 %"
-    if p > 99.5:
-        return ">99 %" if p < 100 else "100 %"
-    return f"{p:.0f} %"
+    if p == 0:
+        return "0.0 %"
+    if p < 0.05:
+        return "<0.1 %"
+    if p == 100:
+        return "100.0 %"
+    if p > 99.95:
+        return ">99.9 %"
+    return f"{p:.1f} %"
 
 
 def team_card(team, sim, table, path, n_sims=None, rank_dist=None, qualifications=None):
@@ -74,18 +78,34 @@ def team_card(team, sim, table, path, n_sims=None, rank_dist=None, qualification
     ax = fig.add_axes([0.07, 0.15, 0.88, 0.47], facecolor="none")
 
     places = np.arange(1, s.N_TEAMS + 1)
-    ax.axvspan(0.5, 8.5, color=C_TOP8, alpha=0.10, lw=0)
-    ax.axvspan(8.5, 24.5, color=C_PLAY, alpha=0.07, lw=0)
-    ax.axvspan(24.5, 36.5, color=C_OUT, alpha=0.10, lw=0)
+    # Zones de fond nettement différenciées + séparateurs verticaux aux frontières 24/25 et 8/9.
+    ax.axvspan(s.N_TEAMS + 0.5, 24.5, color=C_OUT, alpha=0.17, lw=0, zorder=1)
+    ax.axvspan(24.5, 8.5, color=C_PLAY, alpha=0.14, lw=0, zorder=1)
+    ax.axvspan(8.5, 0.5, color=C_TOP8, alpha=0.17, lw=0, zorder=1)
+    ax.axvline(24.5, color=C_OUT, linestyle="--", linewidth=1.1, alpha=0.70, zorder=2)
+    ax.axvline(8.5, color=C_TOP8, linestyle="--", linewidth=1.1, alpha=0.70, zorder=2)
+
     ax.bar(places, 100 * dist, color=[_zone_color(p) for p in places], width=0.72, zorder=3)
     for p, v in zip(places, dist):
         if v >= 0.03:
-            ax.text(p, 100 * v + 0.6, f"{100 * v:.0f}", ha="center", va="bottom", fontsize=9,
+            ax.text(p, 100 * v + 0.6, f"{100 * v:.1f}", ha="center", va="bottom", fontsize=7.5,
                     color=TXT, zorder=4)
-    ax.set_xlim(0.5, s.N_TEAMS + 0.5)
-    y_max = max(100 * dist.max() * 1.25, 10)
+
+    # Axe inversé : pires classements à gauche (36e), meilleurs classements à droite (1er).
+    ax.set_xlim(s.N_TEAMS + 0.5, 0.5)
+    y_max = max(100 * dist.max() * 1.32, 12)
     ax.set_ylim(0, y_max)
-    ax.set_xticks(sorted(set([1, 4, 8, 12, 16, 20, 24, 28, 32, s.N_TEAMS])))
+    ax.set_xticks([s.N_TEAMS, 32, 28, 24, 20, 16, 12, 8, 4, 1])
+
+    # Repères discrets en haut de chaque zone pour identifier immédiatement les 3 paliers.
+    label_y = y_max * 0.945
+    ax.text(30.5, label_y, f"ÉLIMINATION (25-{s.N_TEAMS})", ha="center", va="top",
+            fontsize=8.5, fontweight="bold", color=C_OUT, alpha=0.92, zorder=4)
+    ax.text(16.5, label_y, "BARRAGES (9-24)", ha="center", va="top",
+            fontsize=8.5, fontweight="bold", color=C_PLAY, alpha=0.92, zorder=4)
+    ax.text(4.5, label_y, "TOP 8 (1-8)", ha="center", va="top",
+            fontsize=8.5, fontweight="bold", color=C_TOP8, alpha=0.92, zorder=4)
+
     # L'axe vertical est en pourcentage : il permet de lire la hauteur de chaque barre.
     y_step = 5 if y_max <= 25 else 10
     y_ticks = np.arange(0, y_max + 0.001, y_step)
@@ -98,7 +118,7 @@ def team_card(team, sim, table, path, n_sims=None, rank_dist=None, qualification
     ax.spines["bottom"].set_color(MUTED)
     ax.tick_params(axis="x", length=0, labelsize=10)
     ax.tick_params(axis="y", length=0, colors=MUTED)
-    ax.set_xlabel("Place finale au classement de la phase de ligue", fontsize=10, labelpad=8)
+    ax.set_xlabel("Place finale au classement de la phase de ligue (de la 36e à la 1re)", fontsize=10, labelpad=8)
     ax.set_ylabel("Probabilité", fontsize=10, labelpad=8)
 
     # En-tête
@@ -110,19 +130,10 @@ def team_card(team, sim, table, path, n_sims=None, rank_dist=None, qualification
     # Trois indicateurs demandés : Top 8, Top 24 et élimination.
     # La probabilité de barrages (places 9 à 24) reste disponible dans le CSV
     # et peut se calculer comme Top 24 moins Top 8.
-    boxes = [("QUALIFICATION DIRECTE", "Top 8", q["top8"], C_TOP8),
-             ("QUALIFICATION", "Top 24", q["top24"], C_PLAY),
-             ("ÉLIMINATION", f"Places 25 à {s.N_TEAMS}", q["out"], C_OUT)]
-    x0, w, gap = 0.07, 0.285, 0.0225
-    for k, (title, sub, val, col) in enumerate(boxes):
-        x = x0 + k * (w + gap)
-        fig.patches.append(Rectangle((x, 0.67), w, 0.14, transform=fig.transFigure,
-                                     facecolor=PANEL, edgecolor="none", zorder=1))
-        fig.patches.append(Rectangle((x, 0.67), 0.006, 0.14, transform=fig.transFigure,
-                                     facecolor=col, edgecolor="none", zorder=2))
-        fig.text(x + 0.02, 0.785, title, fontsize=10, color=MUTED, fontweight="bold", va="center")
-        fig.text(x + 0.02, 0.715, pct(val), fontsize=30, color=col, fontweight="bold", va="center")
-        fig.text(x + w - 0.015, 0.70, sub, fontsize=10, color=MUTED, ha="right", va="center")
+    boxes = [("QUALIFICATION DIRECTE", "Top 8", pct(q["top8"]), C_TOP8),
+             ("QUALIFICATION", "Top 24", pct(q["top24"]), C_PLAY),
+             ("ÉLIMINATION", f"Places 25 à {s.N_TEAMS}", pct(q["out"]), C_OUT)]
+    _draw_kpi_boxes(fig, boxes)
 
     fig.text(0.07, 0.055,
              f"Points finaux moyens : {q['exp_pts']:.1f}   ·   Probabilité de barrages (9-{s.N_TEAMS if s.N_TEAMS < 24 else 24}) : {pct(q['playoff'])}",
@@ -148,12 +159,12 @@ def overview(sim, table, path):
         ax.barh(yi, a, color=C_TOP8, height=0.72)
         ax.barh(yi, b, left=a, color=C_PLAY, height=0.72)
         ax.barh(yi, c, left=a + b, color=C_OUT, height=0.72)
-        if a >= 0.06:
-            ax.text(a / 2, yi, pct(a), ha="center", va="center", fontsize=9, color=INK, fontweight="bold")
-        if b >= 0.08:
-            ax.text(a + b / 2, yi, pct(b), ha="center", va="center", fontsize=9, color=INK, fontweight="bold")
-        if c >= 0.06:
-            ax.text(a + b + c / 2, yi, pct(c), ha="center", va="center", fontsize=9, color=TXT,
+        if a >= 0.08:
+            ax.text(a / 2, yi, pct(a), ha="center", va="center", fontsize=8, color=INK, fontweight="bold")
+        if b >= 0.09:
+            ax.text(a + b / 2, yi, pct(b), ha="center", va="center", fontsize=8, color=INK, fontweight="bold")
+        if c >= 0.08:
+            ax.text(a + b + c / 2, yi, pct(c), ha="center", va="center", fontsize=8, color=TXT,
                     fontweight="bold")
         ax.text(-0.015, yi, t, ha="right", va="center", fontsize=11, color=TXT)
         ax.text(1.015, yi, f"{cur[t]['rank']}e · {cur[t]['pts']} pts", ha="left", va="center",
@@ -221,11 +232,12 @@ def _draw_kpi_boxes(fig, boxes):
         fig.patches.append(Rectangle((x, 0.67), 0.006, 0.14, transform=fig.transFigure,
                                      facecolor=col, edgecolor="none", zorder=2))
         title_size = 10 if len(title) <= 22 else 8.5
-        val_size = 24 if len(val_text) <= 7 else 19
+        val_size = 24 if len(val_text) <= 8 else 19
+        sub_size = 7.3 if len(sub) > 30 else 8.5
         fig.text(x + 0.02, 0.785, title, fontsize=title_size, color=MUTED, fontweight="bold", va="center")
-        fig.text(x + 0.02, 0.730, val_text, fontsize=val_size, color=col, fontweight="bold", va="center")
+        fig.text(x + 0.02, 0.732, val_text, fontsize=val_size, color=col, fontweight="bold", va="center")
         if sub:
-            fig.text(x + w - 0.015, 0.690, sub, fontsize=8.5, color=MUTED, ha="right", va="center")
+            fig.text(x + w - 0.014, 0.688, sub, fontsize=sub_size, color=MUTED, ha="right", va="center")
 
 
 def _style_bar_axes(ax):
@@ -259,14 +271,23 @@ def team_points_card(team, sim, table, path, n_sims=None, qualifications=None):
 
     p10, p90 = np.percentile(team_pts, [10, 90])
 
-    fig = _new_fig((12, 6.75))
-    ax = fig.add_axes([0.07, 0.15, 0.88, 0.47], facecolor="none")
+    # Couleurs cohérentes avec les encadrés KPI :
+    # - vert-cyan (C_TOP8) = moyenne attendue (encadré + trait pointillé vertical) ;
+    # - ambre (C_PLAY) = plage probable 80 % (encadré + zone et barres dans [p10, p90]) ;
+    # - bleu-indigo doux = scénarios extrêmes hors de la plage probable.
+    c_tail = "#5d73cc"
+    c_neutral = "#8da4ff"
+    bar_colors = [C_PLAY if (p10 <= p <= p90) else c_tail for p in pts_range]
 
-    ax.bar(pts_range, vals, color=C_TOP8, width=0.72, zorder=3)
-    ax.axvline(q["exp_pts"], color=C_PLAY, linestyle="--", linewidth=1.8, zorder=4)
+    fig = _new_fig((12, 6.75))
+    ax = fig.add_axes([0.07, 0.15, 0.88, 0.45], facecolor="none")
+
+    ax.axvspan(p10 - 0.45, p90 + 0.45, color=C_PLAY, alpha=0.11, lw=0, zorder=1)
+    ax.bar(pts_range, vals, color=bar_colors, width=0.72, zorder=3)
+    ax.axvline(q["exp_pts"], color=C_TOP8, linestyle="--", linewidth=2.0, zorder=4)
     for p, v in zip(pts_range, vals):
-        if v >= 3.0:
-            ax.text(p, v + 0.6, f"{v:.0f}", ha="center", va="bottom", fontsize=9, color=TXT, zorder=5)
+        if v >= 2.5:
+            ax.text(p, v + 0.6, f"{v:.1f}", ha="center", va="bottom", fontsize=8.5, color=TXT, zorder=5)
 
     ax.set_xlim(p_min - 0.6, p_max + 0.6)
     y_max = max(vals.max() * 1.25, 10)
@@ -293,9 +314,20 @@ def team_points_card(team, sim, table, path, n_sims=None, qualifications=None):
     boxes = [
         ("POINTS MOYENS", f"Max : {max_possible} pts", f"{q['exp_pts']:.1f} pts", C_TOP8),
         ("PLAGE PROBABLE (80 % DES SCÉNARIOS)", "", f"{p10:.0f} - {p90:.0f} pts", C_PLAY),
-        ("POINTS ACTUELS", "", f"{cur['pts']} pts", C_OUT),
+        ("POINTS ACTUELS", "", f"{cur['pts']} pts", c_neutral),
     ]
     _draw_kpi_boxes(fig, boxes)
+
+    # Légende alignée entre les encadrés KPI et le graphe pour lever toute ambiguïté visuelle.
+    fig.lines.append(
+        plt.Line2D([0.07, 0.095], [0.630, 0.630], transform=fig.transFigure,
+                   color=C_TOP8, linestyle="--", linewidth=2.0)
+    )
+    fig.text(0.102, 0.630, f"Moyenne attendue ({q['exp_pts']:.1f} pts)", fontsize=9, color=TXT, va="center")
+    fig.patches.append(Rectangle((0.365, 0.623), 0.012, 0.014, transform=fig.transFigure, facecolor=C_PLAY))
+    fig.text(0.383, 0.630, f"Plage probable 80 % ({p10:.0f}-{p90:.0f} pts)", fontsize=9, color=TXT, va="center")
+    fig.patches.append(Rectangle((0.685, 0.623), 0.012, 0.014, transform=fig.transFigure, facecolor=c_tail))
+    fig.text(0.703, 0.630, "Scénarios extrêmes (20 %)", fontsize=9, color=TXT, va="center")
 
     fig.text(
         0.07,
@@ -332,7 +364,7 @@ def team_important_matches_card(team, sim, table, path, n_sims=None, importance=
     cols = [C_TOP8 if m["is_own"] else C_PLAY for m in ordered]
 
     fig = _new_fig((12, 6.75))
-    ax = fig.add_axes([0.27, 0.14, 0.45, 0.63], facecolor="none")
+    ax = fig.add_axes([0.27, 0.14, 0.40, 0.63], facecolor="none")
     y = np.arange(len(labels))
     ax.barh(y, vals, color=cols, height=0.62, zorder=3)
 
@@ -340,8 +372,8 @@ def team_important_matches_card(team, sim, table, path, n_sims=None, importance=
     for yi, m, v in zip(y, ordered, vals):
         p_lo = 100.0 * m["min_prob"]
         p_hi = 100.0 * m["max_prob"]
-        txt = f"{v:.1f} % ({m['zone']} : {p_lo:.0f} % → {p_hi:.0f} %)"
-        ax.text(v + x_max * 0.02, yi, txt, va="center", fontsize=9.5, color=TXT, fontweight="bold")
+        txt = f"{v:.1f} % ({m['zone']} : {p_lo:.1f} % → {p_hi:.1f} %)"
+        ax.text(v + x_max * 0.025, yi, txt, va="center", fontsize=9, color=TXT, fontweight="bold")
 
     ax.set_xlim(0, x_max)
     ax.set_ylim(-0.6, len(labels) - 0.4)
@@ -388,65 +420,103 @@ def team_important_matches_card(team, sim, table, path, n_sims=None, importance=
 
 
 def points_thresholds_card(sim, path, n_sims=None):
-    """Graphe global : distribution des points nécessaires pour finir Top 8 / 16 / 24."""
+    """Graphe global : probabilité de qualification (Top 8 / Barrages / Éliminé) selon le nombre de points."""
     n_sims = n_sims or sim["ranks"].shape[0]
     thresholds = s.points_thresholds(sim, positions=(8, 16, 24))
-    pts_axis = np.arange(len(thresholds[8]))
+    by_pts = s.qualification_by_points(sim)
+    pts_axis = np.arange(len(by_pts["total"]))
 
-    active = np.where((thresholds[8] + thresholds[16] + thresholds[24]) >= 0.002)[0]
-    p_min = max(0, int(active[0]) - 1) if len(active) else 0
-    p_max = min(24, int(active[-1]) + 1) if len(active) else 24
+    # Fenêtre d'affichage centrée sur les totaux de points où les zones basculent,
+    # encadrée par quelques barres sûres à 100 % éliminé à gauche et 100 % Top 8 à droite.
+    valid = by_pts["total"] > 0
+    mixed = valid & (
+        ((by_pts["top8"] > 0.005) & (by_pts["top8"] < 0.995))
+        | ((by_pts["playoff"] > 0.005) & (by_pts["playoff"] < 0.995))
+        | ((by_pts["out"] > 0.005) & (by_pts["out"] < 0.995))
+    )
+    mixed_idx = np.where(mixed)[0]
+    valid_idx = np.where(valid)[0]
+    if len(mixed_idx):
+        p_min = max(int(valid_idx[0]), int(mixed_idx[0]) - 2)
+        p_max = min(int(valid_idx[-1]), int(mixed_idx[-1]) + 3)
+    else:
+        p_min, p_max = 6, 19
     x = np.arange(p_min, p_max + 1)
 
+    p_top8 = 100.0 * by_pts["top8"][p_min:p_max + 1]
+    p_play = 100.0 * by_pts["playoff"][p_min:p_max + 1]
+    p_out = 100.0 * by_pts["out"][p_min:p_max + 1]
+
     fig = _new_fig((12, 6.75))
-    ax = fig.add_axes([0.07, 0.15, 0.88, 0.47], facecolor="none")
+    ax = fig.add_axes([0.07, 0.14, 0.88, 0.45], facecolor="none")
 
-    series = [
-        (8, "Top 8 (8e place)", C_TOP8, -0.26),
-        (16, "Top 16 (16e place)", C_PLAY, 0.0),
-        (24, "Top 24 (24e place)", C_OUT, 0.26),
-    ]
-    y_max = 10.0
-    kpis = []
-    for pos, label, col, offset in series:
-        dist = thresholds[pos]
-        vals = 100 * dist[p_min:p_max + 1]
-        y_max = max(y_max, float(vals.max()) * 1.22)
-        ax.bar(x + offset, vals, width=0.25, color=col, label=label, zorder=3)
-        for xi, v in zip(x + offset, vals):
-            if v >= 6.0:
-                ax.text(xi, v + 0.5, f"{v:.0f}", ha="center", va="bottom", fontsize=7.5, color=TXT, zorder=4)
-        mean_p = float(np.sum(pts_axis * dist))
-        mode_p = int(np.argmax(dist))
-        kpis.append((label.upper(), f"Nombre de points le plus fréquent du seuil : {mode_p} pts", f"{mean_p:.1f} pts", col))
+    bar_w = 0.76
+    ax.bar(x, p_top8, width=bar_w, color=C_TOP8, edgecolor=BG, linewidth=0.8, zorder=3)
+    ax.bar(x, p_play, bottom=p_top8, width=bar_w, color=C_PLAY, edgecolor=BG, linewidth=0.8, zorder=3)
+    ax.bar(x, p_out, bottom=p_top8 + p_play, width=bar_w, color=C_OUT, edgecolor=BG, linewidth=0.8, zorder=3)
 
-    ax.set_xlim(p_min - 0.6, p_max + 0.6)
-    ax.set_ylim(0, y_max)
+    # Affiche les pourcentages (1 décimale) uniquement sur les segments intermédiaires lisibles.
+    for xi, a, b, c in zip(x, p_top8, p_play, p_out):
+        for val, bottom, text_col in (
+            (a, 0.0, INK),
+            (b, a, INK),
+            (c, a + b, TXT),
+        ):
+            if 4.0 <= val <= 98.5:
+                fs = 7.5 if val < 6.5 else 8.5
+                ax.text(
+                    xi,
+                    bottom + val / 2.0,
+                    f"{val:.1f}",
+                    ha="center",
+                    va="center",
+                    fontsize=fs,
+                    fontweight="bold",
+                    color=text_col,
+                    zorder=4,
+                )
+
+    ax.set_xlim(p_min - 0.65, p_max + 0.65)
+    ax.set_ylim(0, 100)
     ax.set_xticks(x)
-    y_step = 5 if y_max <= 30 else 10
-    y_ticks = np.arange(0, y_max + 0.001, y_step)
+    y_ticks = np.arange(0, 101, 20)
     ax.set_yticks(y_ticks)
-    ax.set_yticklabels([f"{v:.0f} %" for v in y_ticks], fontsize=8)
+    ax.set_yticklabels([f"{v:.0f} %" for v in y_ticks], fontsize=8.5)
     _style_bar_axes(ax)
-    ax.set_xlabel("Points du dernier qualifié à la place seuil", fontsize=10, labelpad=8)
-    ax.set_ylabel("Probabilité", fontsize=10, labelpad=8)
+    ax.set_xlabel("Nombre de points en fin de phase de ligue", fontsize=10, labelpad=8)
+    ax.set_ylabel("Probabilité (%)", fontsize=10, labelpad=8)
 
-    fig.text(0.07, 0.92, "SEUILS DE QUALIFICATION — TOP 8 / 16 / 24", fontsize=26, fontweight="bold", color=TXT, va="center")
+    fig.text(0.07, 0.92, "SEUILS DE QUALIFICATION — PROBABILITÉ PAR POINTS", fontsize=24, fontweight="bold", color=TXT, va="center")
     fig.text(
         0.07,
         0.855,
-        "Distribution du nombre de points nécessaires (score du 8e, 16e et 24e en fin de phase de ligue)",
+        "Probabilité de finir qualifié direct, barragiste ou éliminé selon le nombre final de points",
         fontsize=12,
         color=MUTED,
         va="center",
     )
 
+    kpis = []
+    for pos, label, col in (
+        (8, "TOP 8 (8E PLACE)", C_TOP8),
+        (16, "TOP 16 (16E PLACE)", C_PLAY),
+        (24, "TOP 24 (24E PLACE)", C_OUT),
+    ):
+        dist = thresholds[pos]
+        mean_p = float(np.sum(pts_axis * dist))
+        mode_p = int(np.argmax(dist))
+        kpis.append((label, f"Seuil le plus fréquent : {mode_p} pts", f"{mean_p:.1f} pts", col))
     _draw_kpi_boxes(fig, kpis)
 
-    for k, (_, label, col, _) in enumerate(series):
-        lx = 0.07 + k * 0.23
-        fig.patches.append(Rectangle((lx, 0.625), 0.012, 0.014, transform=fig.transFigure, facecolor=col))
-        fig.text(lx + 0.018, 0.632, label, fontsize=9.5, color=TXT, va="center")
+    legend_items = [
+        ("Qualification directe (Top 8)", C_TOP8),
+        ("Barrages (9e-24e)", C_PLAY),
+        ("Éliminé (25e-36e)", C_OUT),
+    ]
+    for k, (label, col) in enumerate(legend_items):
+        lx = 0.07 + k * 0.28
+        fig.patches.append(Rectangle((lx, 0.622), 0.012, 0.014, transform=fig.transFigure, facecolor=col))
+        fig.text(lx + 0.018, 0.629, label, fontsize=9.5, color=TXT, va="center")
 
     fig.text(
         0.07,

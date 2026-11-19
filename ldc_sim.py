@@ -483,6 +483,32 @@ def points_thresholds(sim, positions=(8, 9, 16, 17, 24, 25)):
     return out
 
 
+def qualification_by_points(sim):
+    """Probabilité d'issue finale (Top 8 / Barrages / Éliminé) selon le total de points.
+
+    Pour chaque nombre de points p (0 à 24), calcule la proportion d'équipes
+    finissant avec exactement p points qui terminent :
+      - dans le Top 8 (qualification directe) ;
+      - entre la 9e et la 24e place (barrages) ;
+      - entre la 25e et la 36e place (élimination).
+    """
+    pts = sim["pts"].ravel()
+    ranks = sim["ranks"].ravel()
+    total = np.bincount(pts, minlength=25).astype(float)
+    top8 = np.bincount(pts[ranks <= 8], minlength=25).astype(float)
+    playoff = np.bincount(pts[(ranks >= 9) & (ranks <= 24)], minlength=25).astype(float)
+    out = np.bincount(pts[ranks >= 25], minlength=25).astype(float)
+
+    valid = total > 0
+    p_top8 = np.zeros(25, dtype=float)
+    p_play = np.zeros(25, dtype=float)
+    p_out = np.zeros(25, dtype=float)
+    p_top8[valid] = top8[valid] / total[valid]
+    p_play[valid] = playoff[valid] / total[valid]
+    p_out[valid] = out[valid] / total[valid]
+    return dict(total=total, top8=p_top8, playoff=p_play, out=p_out)
+
+
 def match_importance(sim):
     """Calcule l'importance de chaque match restant pour chaque équipe.
 

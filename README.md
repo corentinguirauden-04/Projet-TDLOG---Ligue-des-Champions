@@ -209,6 +209,7 @@ La vectorisation NumPy permet de traiter de nombreux scénarios dans des tableau
 | `qualification_probs(sim)` | Calcule les probabilités Top 8, barrages, Top 24, élimination et les points moyens. |
 | `prob_objectives(sim, objectives)` | Calcule la probabilité que plusieurs objectifs soient atteints simultanément. |
 | `points_thresholds(sim, positions)` | Calcule la distribution des points du club qui finit à certaines places (8e, 9e, 16e, etc.). |
+| `qualification_by_points(sim)` | Calcule pour chaque total de points (0 à 24) la probabilité de finir Top 8, en barrages ou éliminé. |
 | `match_importance(sim)` | Mesure pour chaque équipe l'impact de chaque match restant sur ses chances de Top 8 ou Top 24 selon les 3 issues possibles (`1` / `N` / `2`). |
 
 Exécuter directement le module lance un exemple de 20 000 simulations et affiche les dix équipes avec la plus forte probabilité de finir dans le Top 8 :
@@ -239,7 +240,7 @@ for club, valeurs in sorted(
 | Fonction | Fichier produit / contenu |
 |---|---|
 | `overview(sim, table, path)` | Vue globale des 36 équipes, avec les probabilités Top 8 / barrages / élimination. |
-| `points_thresholds_card(sim, path, n_sims=None)` | Vue globale des seuils : distribution du nombre de points nécessaires pour finir Top 8, Top 16 et Top 24. |
+| `points_thresholds_card(sim, path, n_sims=None)` | Vue globale des seuils : barres empilées à 100 % donnant la probabilité de qualification directe, barrages ou élimination selon le nombre de points. |
 | `team_card(team, sim, table, path, n_sims=None)` | Fiche d'une équipe : distribution des 36 places possibles et trois indicateurs de qualification. |
 | `team_points_card(team, sim, table, path, n_sims=None)` | Fiche d'une équipe : distribution des points finaux, moyenne, plage probable (10e–90e percentile) et points actuels/max. |
 | `team_important_matches_card(team, sim, table, path, n_sims=None)` | Fiche d'une équipe : Top 10 des matchs restants les plus décisifs (les siens et ceux des concurrents), avec l'écart de probabilité (en %) entre le pire et le meilleur résultat (`1` / `N` / `2`) pour le Top 8 ou le Top 24. |
@@ -310,20 +311,20 @@ python main.py --source manual
 python main.py --source manual --elo-file mon_elo.json
 ```
 
-Par défaut, le script réalise **20 000 simulations Monte Carlo** (graine aléatoire fixe : 42) et range tous les résultats dans `outputs/<source>/` (`outputs/html/`, `outputs/clubelo/`, `outputs/beyondelo/` ou `outputs/manual/`) :
+Par défaut, le script réalise **100 000 simulations Monte Carlo** (graine aléatoire fixe : 42) et range tous les résultats dans `outputs/<source>/` (`outputs/html/`, `outputs/clubelo/`, `outputs/beyondelo/` ou `outputs/manual/`) :
 
-- `outputs/<source>/equipes/<equipe>/classement.png` : distribution des places finales (1re à 36e) et probabilités Top 8 / Top 24 / élimination pour l'équipe ;
-- `outputs/<source>/equipes/<equipe>/points.png` : distribution du nombre de points finaux pour l'équipe ;
+- `outputs/<source>/equipes/<equipe>/classement.png` : distribution des places finales (de la 36e à gauche à la 1re à droite) et probabilités Top 8 / Top 24 / élimination pour l'équipe ;
+- `outputs/<source>/equipes/<equipe>/points.png` : distribution du nombre de points finaux pour l'équipe (moyenne en vert, plage probable 80 % en jaune) ;
 - `outputs/<source>/equipes/<equipe>/matchs_cles.png` : Top 10 des matchs restants les plus importants pour l'équipe (avec l'écart en % entre le pire et le meilleur scénario) ;
 - `outputs/<source>/classement_global.png` : vue générale des probabilités de qualification des 36 équipes ;
-- `outputs/<source>/seuils_points_top_8_16_24.png` : distribution globale du nombre de points nécessaires pour finir dans le Top 8, le Top 16 et le Top 24 ;
+- `outputs/<source>/seuils_points_top_8_16_24.png` : graphique empilé à 100 % des probabilités d'issue finale (Top 8 / barrages / éliminé) selon le nombre de points ;
 - `outputs/<source>/probabilites_equipes.csv` : tableau des probabilités Top 8, Top 24, barrages, élimination, points moyens et probabilité de chacune des 36 places.
 
-Pour augmenter le nombre de simulations, indiquez-le avec `--n-sims` (ou en argument de `generate_outputs.py`) :
+Pour modifier le nombre de simulations, indiquez-le avec `--n-sims` (ou en argument de `generate_outputs.py`) :
 
 ```powershell
-python main.py --source beyondelo --n-sims 100000
-python generate_outputs.py --source beyondelo 100000
+python main.py --source beyondelo --n-sims 250000
+python generate_outputs.py --source beyondelo 250000
 ```
 
 Le nombre d'équipes est lu automatiquement dans `ldc_data.py`. Dans la version actuelle, le projet contient **36 équipes** (et non 32). Le nombre de graphiques s'adapte donc à la liste réellement chargée.
@@ -354,7 +355,7 @@ Puis ouvrir `http://<adresse-IPv4-du-PC>:8000` (l'IPv4 locale s'obtient via `ipc
 
 ### Contenu et fonctionnalités de l'interface
 
-- **Barre de contrôle :** choix de l'indice de force (**ClubElo**, **beyondELO**, **Personnalisé**), choix du nombre de scénarios simulés (`5 000` à `100 000`) et bouton pour recalculer les projections à la volée. En mode **Personnalisé**, un éditeur permet de modifier les notes des 36 clubs (entiers entre `500` et `3 000`) ou de les remettre aux valeurs par défaut (`DEFAULT_ELO`).
+- **Barre de contrôle :** choix de l'indice de force (**ClubElo**, **beyondELO**, **Personnalisé**), choix du nombre de scénarios simulés (`20 000` à `1 000 000`, `100 000` par défaut) et bouton pour recalculer les projections à la volée. En mode **Personnalisé**, un éditeur permet de modifier les notes des 36 clubs (entiers entre `500` et `3 000`) ou de les remettre aux valeurs par défaut (`DEFAULT_ELO`).
 - **Accueil & Repères :** mise en avant des 4 paliers clés (1re place, bataille du Top 8, Top 16 tête de série, maintien dans le Top 24) et focus sur les clubs français (PSG, Lille, Lens).
 - **Explorateur par Club :** fiche détaillée de chaque équipe avec ses indicateurs et ses 3 graphiques (`classement`, `points`, `matchs_cles`), avec zoom plein écran au clic.
 - **Classement & Seuils :** tableau interactif des 36 clubs (triable par colonne et filtrable), vue d'ensemble graphique et seuils de points requis (Top 8 / 16 / 24).
