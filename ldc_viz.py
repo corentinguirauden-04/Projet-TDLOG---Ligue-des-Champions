@@ -2,6 +2,8 @@
 Visuels de la simulation (style "plateau télé" : fond sombre, gros chiffres, trois zones de couleur).
 Zones : top 8 = qualifié direct, 9-24 = barrages, 25-36 = éliminé.
 """
+import datetime as dt
+
 import matplotlib
 
 matplotlib.use("Agg")
@@ -9,7 +11,35 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Rectangle
 
+import ldc_data
 import ldc_sim as s
+
+_FR_MONTHS = (
+    "",
+    "janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+)
+
+
+def _format_fr_date(iso_date: str | None) -> str:
+    """Formate une date ISO (AAAA-MM-JJ) en français (ex. '21 novembre 2026')."""
+    if iso_date:
+        try:
+            d = dt.date.fromisoformat(iso_date)
+        except ValueError:
+            d = dt.date.today()
+    else:
+        d = dt.date.today()
+    day_str = "1er" if d.day == 1 else str(d.day)
+    return f"{day_str} {_FR_MONTHS[d.month]} {d.year}"
+
+
+def _matchday_date_label() -> str:
+    """Construit le repère temporel 'après la journée n, en date du xxx'."""
+    matches_per_day = max(1, s.N_TEAMS // 2)
+    journee = len(ldc_data.PLAYED) // matches_per_day
+    date_label = _format_fr_date(getattr(ldc_data, "ELO_DATE", None))
+    return f"après la journée {journee}, en date du {date_label}"
 
 BG_TOP = "#14217a"    # bleu foncé (haut du dégradé)
 BG = "#060b33"        # bleu nuit (bas du dégradé)
@@ -124,8 +154,8 @@ def team_card(team, sim, table, path, n_sims=None, rank_dist=None, qualification
     # En-tête
     fig.text(0.07, 0.92, team.upper(), fontsize=30, fontweight="bold", color=TXT, va="center")
     fig.text(0.07, 0.855,
-             f"Classement actuel : {cur['rank']}e  ·  {cur['pts']} pts  ·  diff buts actuelle {cur['gd']:+d}",
-             fontsize=12, color=MUTED, va="center")
+             f"Classement actuel : {cur['rank']}e  ·  {cur['pts']} pts  ·  diff {cur['gd']:+d}  ·  {_matchday_date_label().capitalize()}",
+             fontsize=11.5, color=MUTED, va="center")
 
     # Trois indicateurs demandés : Top 8, Top 24 et élimination.
     # La probabilité de barrages (places 9 à 24) reste disponible dans le CSV
@@ -174,7 +204,7 @@ def overview(sim, table, path):
     ax.axis("off")
 
     fig.text(0.05, 0.955, "LIGUE DES CHAMPIONS — SIMULATION", fontsize=24, fontweight="bold", va="center")
-    fig.text(0.05, 0.925, "Probabilités de qualification à partir des données enregistrées", fontsize=13, color=MUTED,
+    fig.text(0.05, 0.925, f"Probabilités de qualification {_matchday_date_label()}", fontsize=13, color=MUTED,
              va="center")
     for k, (lab, col) in enumerate([("8es de finale directs (top 8)", C_TOP8),
                                     ("Barrages (9e-24e)", C_PLAY), ("Éliminé (25e-36e)", C_OUT)]):
@@ -214,8 +244,9 @@ def objectives_card(sim, objectives, path):
         sp.set_visible(False)
     ax.tick_params(length=0)
     fig.text(0.07, 0.90, "LE SCÉNARIO", fontsize=30, fontweight="bold", va="center")
-    fig.text(0.07, 0.835, "Probabilité que chaque objectif soit atteint à la fin de la phase de ligue",
-             fontsize=12, color=MUTED, va="center")
+    fig.text(0.07, 0.835,
+             f"Probabilité de chaque objectif en fin de phase de ligue  ·  {_matchday_date_label().capitalize()}",
+             fontsize=11.5, color=MUTED, va="center")
     fig.text(0.07, 0.04, "Simulation Monte Carlo, modèle Elo + loi de Poisson. 'Tous à la fois' "
              "tient compte du fait que les résultats des équipes s'influencent.", fontsize=9, color=MUTED)
     fig.savefig(path, dpi=130, facecolor=BG)
@@ -305,8 +336,8 @@ def team_points_card(team, sim, table, path, n_sims=None, qualifications=None):
     fig.text(
         0.07,
         0.855,
-        f"Classement actuel : {cur['rank']}e  ·  {cur['pts']} pts  ·  diff buts actuelle {cur['gd']:+d}",
-        fontsize=12,
+        f"Classement actuel : {cur['rank']}e  ·  {cur['pts']} pts  ·  diff {cur['gd']:+d}  ·  {_matchday_date_label().capitalize()}",
+        fontsize=11.5,
         color=MUTED,
         va="center",
     )
@@ -387,8 +418,8 @@ def team_important_matches_card(team, sim, table, path, n_sims=None, importance=
     fig.text(
         0.07,
         0.86,
-        f"Top 10 des matchs restants les plus décisifs  ·  Actuel : {cur['rank']}e ({cur['pts']} pts)",
-        fontsize=12,
+        f"Top 10 des matchs décisifs  ·  Actuel : {cur['rank']}e ({cur['pts']} pts)  ·  {_matchday_date_label().capitalize()}",
+        fontsize=11.5,
         color=MUTED,
         va="center",
     )
@@ -489,7 +520,7 @@ def points_thresholds_card(sim, path, n_sims=None):
     fig.text(
         0.07,
         0.855,
-        "Probabilité de finir qualifié direct, barragiste ou éliminé selon le nombre final de points",
+        f"Issue finale selon le nombre de points  ·  {_matchday_date_label().capitalize()}",
         fontsize=12,
         color=MUTED,
         va="center",
@@ -516,6 +547,102 @@ def points_thresholds_card(sim, path, n_sims=None):
         lx = 0.07 + k * 0.28
         fig.patches.append(Rectangle((lx, 0.622), 0.012, 0.014, transform=fig.transFigure, facecolor=col))
         fig.text(lx + 0.018, 0.629, label, fontsize=9.5, color=TXT, va="center")
+
+    fig.text(
+        0.07,
+        0.025,
+        f"Monte Carlo : {n_sims:,} simulations · Modèle Elo + loi de Poisson".replace(",", " "),
+        fontsize=8,
+        color=MUTED,
+        va="center",
+    )
+    fig.savefig(path, dpi=130, facecolor=BG)
+    plt.close(fig)
+
+
+def position_points_card(position, sim, path, n_sims=None, pts_by_rank=None):
+    """Enregistre la distribution du nombre de points du club classé à la place `position` (1..36)."""
+    if pts_by_rank is None:
+        pts_by_rank = s.points_by_position(sim)
+
+    pos_pts = pts_by_rank[:, position - 1]
+    n_sims = n_sims or sim["ranks"].shape[0]
+    dist = np.bincount(pos_pts, minlength=25) / n_sims
+
+    nonzero = np.where(dist > 0)[0]
+    p_min = max(0, int(nonzero[0]) - 1) if len(nonzero) else 0
+    p_max = min(24, int(nonzero[-1]) + 1) if len(nonzero) else 24
+    pts_range = np.arange(p_min, p_max + 1)
+    vals = 100.0 * dist[p_min:p_max + 1]
+
+    mean_p = float(np.mean(pos_pts))
+    mode_p = int(np.argmax(dist))
+    p10, p90 = np.percentile(pos_pts, [10, 90])
+
+    pos_label = "1re" if position == 1 else f"{position}e"
+    pos_title = "1RE" if position == 1 else f"{position}E"
+    if position <= 8:
+        zone_label = "Qualification directe (Top 8)"
+    elif position <= 16:
+        zone_label = "Barrages — Tête de série (9e-16e)"
+    elif position <= 24:
+        zone_label = "Barrages — Non tête de série (17e-24e)"
+    else:
+        zone_label = f"Élimination (25e-{s.N_TEAMS}e)"
+
+    # Même code couleur cohérent que team_points_card :
+    # vert-cyan = moyenne, ambre = plage probable 80 %, bleu-indigo doux = extrêmes 20 %.
+    c_tail = "#5d73cc"
+    bar_colors = [C_PLAY if (p10 <= p <= p90) else c_tail for p in pts_range]
+
+    fig = _new_fig((12, 6.75))
+    ax = fig.add_axes([0.07, 0.15, 0.88, 0.45], facecolor="none")
+
+    ax.axvspan(p10 - 0.45, p90 + 0.45, color=C_PLAY, alpha=0.11, lw=0, zorder=1)
+    ax.bar(pts_range, vals, color=bar_colors, width=0.72, zorder=3)
+    ax.axvline(mean_p, color=C_TOP8, linestyle="--", linewidth=2.0, zorder=4)
+    for p, v in zip(pts_range, vals):
+        if v >= 2.5:
+            ax.text(p, v + 0.6, f"{v:.1f}", ha="center", va="bottom", fontsize=8.5, color=TXT, zorder=5)
+
+    ax.set_xlim(p_min - 0.6, p_max + 0.6)
+    y_max = max(vals.max() * 1.25, 10)
+    ax.set_ylim(0, y_max)
+    ax.set_xticks(pts_range)
+    y_step = 5 if y_max <= 25 else 10
+    y_ticks = np.arange(0, y_max + 0.001, y_step)
+    ax.set_yticks(y_ticks)
+    ax.set_yticklabels([f"{v:.0f} %" for v in y_ticks], fontsize=8)
+    _style_bar_axes(ax)
+    ax.set_xlabel(f"Nombre de points du club classé {pos_label} en fin de phase de ligue", fontsize=10, labelpad=8)
+    ax.set_ylabel("Probabilité", fontsize=10, labelpad=8)
+
+    fig.text(0.07, 0.92, f"{pos_title} PLACE — DISTRIBUTION DES POINTS", fontsize=25, fontweight="bold", color=TXT, va="center")
+    fig.text(
+        0.07,
+        0.855,
+        f"{zone_label}  ·  {_matchday_date_label().capitalize()}",
+        fontsize=12,
+        color=MUTED,
+        va="center",
+    )
+
+    boxes = [
+        ("POINTS MOYENS", f"Place n°{position} / {s.N_TEAMS}", f"{mean_p:.1f} pts", C_TOP8),
+        ("PLAGE PROBABLE (80 % DES SCÉNARIOS)", "", f"{p10:.0f} - {p90:.0f} pts", C_PLAY),
+        ("SCORE LE PLUS FRÉQUENT", f"Probabilité : {pct(dist[mode_p])}", f"{mode_p} pts", _zone_color(position)),
+    ]
+    _draw_kpi_boxes(fig, boxes)
+
+    fig.lines.append(
+        plt.Line2D([0.07, 0.095], [0.630, 0.630], transform=fig.transFigure,
+                   color=C_TOP8, linestyle="--", linewidth=2.0)
+    )
+    fig.text(0.102, 0.630, f"Moyenne attendue ({mean_p:.1f} pts)", fontsize=9, color=TXT, va="center")
+    fig.patches.append(Rectangle((0.365, 0.623), 0.012, 0.014, transform=fig.transFigure, facecolor=C_PLAY))
+    fig.text(0.383, 0.630, f"Plage probable 80 % ({p10:.0f}-{p90:.0f} pts)", fontsize=9, color=TXT, va="center")
+    fig.patches.append(Rectangle((0.685, 0.623), 0.012, 0.014, transform=fig.transFigure, facecolor=c_tail))
+    fig.text(0.703, 0.630, "Scénarios extrêmes (20 %)", fontsize=9, color=TXT, va="center")
 
     fig.text(
         0.07,

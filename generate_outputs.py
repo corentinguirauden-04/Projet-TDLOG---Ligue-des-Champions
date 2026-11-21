@@ -1,16 +1,16 @@
-"""Génère les graphiques de qualification pour toutes les équipes.
+"""Génère les graphiques de qualification pour toutes les équipes et toutes les places.
 
 À lancer depuis le dossier du projet :
-    python generate_outputs.py --source clubelo                          # utilise clubelo (HTML local ou API si elo.json absent/autre source)
-    python generate_outputs.py --source beyondelo                        # récupère les Elo beyondELO si besoin (dernier JSON ne provenant pas de beyondELO) 
+    python generate_outputs.py --source clubelo                          # ClubElo (API puis HTML auto) -> outputs/clubelo/
+    python generate_outputs.py --source beyondelo                        # récupère les Elo beyondELO si besoin -> outputs/beyondelo/
     python generate_outputs.py --source beyondelo 100000 --date 2026-10-01  # 100 000 sim. avec les Elo beyondELO du 2026-10-01
     python generate_outputs.py --source beyondelo --refresh              # force le re-téléchargement depuis l'API beyondELO
     python generate_outputs.py --source manual                           # utilise DEFAULT_ELO de ldc_data.py -> outputs/manual/
     python generate_outputs.py --source manual --elo-file mon_elo.json   # utilise un fichier JSON personnalisé -> outputs/manual/
 
 Le nombre de simulations est de 100 000 par défaut. Les images et le CSV sont
-enregistrés dans outputs/<source>/ (equipes/<equipe>/, classement_global.png,
-seuils_points_top_8_16_24.png, probabilites_equipes.csv).
+enregistrés dans outputs/<source>/ (equipes/<equipe>/, classements/<1..36>.png,
+classement_global.png, seuils_points_top_8_16_24.png, probabilites_equipes.csv).
 """
 from __future__ import annotations
 
@@ -36,9 +36,15 @@ def _ensure_elo_source(
     source: str,
     date: str | None = None,
     refresh: bool = False,
+    no_refresh: bool = False,
     elo_file: Path | None = None,
 ) -> int:
-    """Met à jour elo.json depuis la source demandée si nécessaire."""
+    """Met à jour elo.json depuis la source demandée si nécessaire.
+
+    Pour ClubElo (`clubelo`), tente l'API puis bascule automatiquement sur le
+    téléchargement HTML à jour (`clubelo_ranking.html`) à chaque génération,
+    sauf si `no_refresh=True`.
+    """
     if source == "manual":
         import datetime as dt
         import ldc_data
@@ -66,18 +72,25 @@ def _ensure_elo_source(
         importlib.reload(ldc_data)
         return 0
 
-    needs_fetch = refresh or date is not None or not ELO_FILE.exists()
-    if not needs_fetch:
-        try:
-            current = json.loads(ELO_FILE.read_text(encoding="utf-8"))
-            needs_fetch = current.get("source") != source
-        except Exception:
-            needs_fetch = True
+    if source == "clubelo":
+        # À chaque génération ClubElo, on actualise elo.json (API puis HTML auto-téléchargé)
+        # sauf demande explicite --no-refresh qui relit le fichier HTML local.
+        needs_fetch = True
+    else:
+        needs_fetch = (refresh and not no_refresh) or date is not None or not ELO_FILE.exists()
+        if not needs_fetch:
+            try:
+                current = json.loads(ELO_FILE.read_text(encoding="utf-8"))
+                needs_fetch = current.get("source") != source
+            except Exception:
+                needs_fetch = True
 
     if not needs_fetch:
         return 0
 
     elo_args = ["--source", source]
+    if no_refresh and source == "clubelo":
+        elo_args.append("--no-download")
     if date is not None:
         elo_args.append(date)
     status = ldc_elo.main(elo_args)
@@ -136,9 +149,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "-s",
         "--source",
-        choices=("html", "clubelo", "beyondelo", "manual"),
-        default="html",
-        help="Source Elo utilisée pour la simulation et le sous-dossier de sortie (défaut : html).",
+        choices=("clubelo", "beyondelo", "manual"),
+        default="clubelo",
+        help="Source Elo utilisée pour la simulation et le sous-dossier de sortie (défaut : clubelo).",
     )
     parser.add_argument(
         "--elo-file",
@@ -156,6 +169,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Force le re-téléchargement de elo.json depuis la source choisie.",
     )
+    parser.add_argument(
+        "--no-refresh",
+        action="store_true",
+        help="Réutilise clubelo_ranking.html / elo.json local sans téléchargement réseau.",
+    )
     args = parser.parse_args(argv)
     n_sims: int = args.n_sims
 
@@ -167,6 +185,7 @@ def main(argv: list[str] | None = None) -> int:
         args.source,
         date=args.date,
         refresh=args.refresh,
+        no_refresh=args.no_refresh,
         elo_file=args.elo_file,
     )
     if status != 0:
@@ -187,8 +206,10 @@ def main(argv: list[str] | None = None) -> int:
 
     output_dir = OUTPUT_DIR / args.source
     team_output_dir = output_dir / "equipes"
+    ranking_output_dir = output_dir / "classements"
     output_dir.mkdir(parents=True, exist_ok=True)
     team_output_dir.mkdir(parents=True, exist_ok=True)
+    ranking_output_dir.mkdir(parents=True, exist_ok=True)
 
     print(
         f"Lancement de {n_sims:,} simulations ({args.source}) "
@@ -196,10 +217,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     simulation = sim_engine.simulate(n_sims=n_sims, seed=SEED)
 
-    # Ces calculs sont effectués une seule fois puis réutilisés pour les 36 fiches.
+    # Ces calculs sont effectués une seule fois puis réutilisés pour toutes les fiches.
     rank_dist = sim_engine.rank_distribution(simulation)
     qualifications = sim_engine.qualification_probs(simulation)
     importance = sim_engine.match_importance(simulation)
+    pts_by_rank = sim_engine.points_by_position(simulation)
     current_table = sim_engine.current_table()
 
     # Un sous-dossier par équipe contenant ses 3 graphes (classement, points, matchs clés).
@@ -234,6 +256,17 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"[{index:02d}/{len(sim_engine.TEAMS)}] Graphiques créés : {team_dir_name}/")
 
+    # Distribution des points pour chaque position finale (1.png à 36.png) dans classements/.
+    for position in range(1, sim_engine.N_TEAMS + 1):
+        viz.position_points_card(
+            position,
+            simulation,
+            ranking_output_dir / f"{position}.png",
+            n_sims=n_sims,
+            pts_by_rank=pts_by_rank,
+        )
+    print(f"Graphiques par position créés : {ranking_output_dir} (1.png à {sim_engine.N_TEAMS}.png)")
+
     # Vues d'ensemble : probabilités de qualification + seuils de points Top 8 / 16 / 24.
     overview_path = output_dir / "classement_global.png"
     viz.overview(simulation, current_table, overview_path)
@@ -249,6 +282,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Source : {args.source}")
     print(f"Équipes traitées : {len(sim_engine.TEAMS)}")
     print(f"Dossiers par équipe : {team_output_dir}")
+    print(f"Points par position : {ranking_output_dir}")
     print(f"Vue d'ensemble : {overview_path}")
     print(f"Seuils de points Top 8/16/24 : {thresholds_path}")
     print(f"Probabilités détaillées (CSV) : {csv_path}")

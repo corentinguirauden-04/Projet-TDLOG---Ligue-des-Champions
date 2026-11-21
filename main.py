@@ -21,18 +21,17 @@ from pathlib import Path
 import generate_outputs
 
 
-SOURCES = ("html", "clubelo", "beyondelo", "manual")
+SOURCES = ("clubelo", "beyondelo", "manual")
 
 
 def _prompt_source() -> str:
     """Demande la source Elo de manière interactive si aucun argument n'est fourni."""
     print("Choisis la source Elo :")
-    print("  1. html (HTML ClubElo local)")
-    print("  2. clubelo (API ClubElo)")
-    print("  3. beyondelo (API beyondELO)")
-    print("  4. manual (Elo personnalisé)")
-    choice = input("Source [html] : ").strip().lower()
-    mapping = {"": "html", "1": "html", "2": "clubelo", "3": "beyondelo", "4": "manual"}
+    print("  1. clubelo (ClubElo : API avec repli HTML automatique)")
+    print("  2. beyondelo (API beyondELO)")
+    print("  3. manual (Elo personnalisé)")
+    choice = input("Source [clubelo] : ").strip().lower()
+    mapping = {"": "clubelo", "1": "clubelo", "2": "beyondelo", "3": "manual"}
     resolved = mapping.get(choice, choice)
     if resolved not in SOURCES:
         raise ValueError(f"Source invalide : {choice!r}. Choix possibles : {', '.join(SOURCES)}.")
@@ -95,7 +94,9 @@ def main(argv: list[str] | None = None) -> int:
         gen_args.extend(["--date", args.date])
     if args.elo_file is not None:
         gen_args.extend(["--elo-file", str(args.elo_file)])
-    if not args.no_refresh and source != "manual":
+    if args.no_refresh and source != "manual":
+        gen_args.append("--no-refresh")
+    elif not args.no_refresh and source != "manual":
         gen_args.append("--refresh")
 
     # 1. Prépare elo.json selon la source choisie et génère les sorties.

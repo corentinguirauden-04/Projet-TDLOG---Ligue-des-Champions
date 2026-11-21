@@ -1,23 +1,24 @@
 """Récupère les notes Elo des 36 clubs de la phase de ligue.
 
-Ordre de récupération :
-1. Si un fichier HTML ClubElo local est présent, il est lu en priorité.
-2. Si aucun HTML n'est trouvé, le script essaie l'ancienne API CSV ClubElo.
-3. Les données ne sont écrites dans elo.json que si les 36 équipes sont retrouvées.
+Fonctionnement par défaut pour ClubElo (`--source clubelo`, source par défaut) :
+1. Essaie d'abord l'API CSV ClubElo (`api.clubelo.com`).
+2. Si l'API est indisponible (date du jour), bascule automatiquement sur la page
+   HTML live https://clubelo.com/Ranking : télécharge la page à jour, remplace
+   atomiquement `clubelo_ranking.html` après validation, puis extrait les notes
+   depuis ce fichier HTML (et d'éventuels `clubelo_*.html` complémentaires).
+3. En cas d'indisponibilité réseau totale, utilise le fichier `clubelo_ranking.html`
+   déjà présent localement.
 
-Utilisation habituelle :
-    1. Ouvrir https://clubelo.com/Ranking dans un navigateur.
-    2. Attendre le chargement complet de la page.
-    3. Enregistrer la page sous clubelo_ranking.html (HTML uniquement), dans
-       le même dossier que ce script.
-    4. Exécuter : python ldc_elo.py
+Exemples :
+    python ldc_elo.py                       # ClubElo (API puis HTML auto) -> elo.json
+    python ldc_elo.py --source clubelo      # idem
+    python ldc_elo.py --no-download         # relit clubelo_ranking.html local sans appel réseau
+    python ldc_elo.py --source beyondelo    # récupère les Elo via l'API beyondELO
+    python ldc_elo.py clubelo_ranking.html  # lit explicitement un ou plusieurs fichiers HTML
 
-On peut aussi fournir explicitement un ou plusieurs fichiers HTML :
-    python ldc_elo.py clubelo_ranking.html
-    python ldc_elo.py clubelo_ENG.html clubelo_FRA.html
-
-Pour une date historique, l'ancienne API est nécessaire :
-    python ldc_elo.py 2026-09-07
+Pour une date historique :
+    python ldc_elo.py --source beyondelo 2026-10-01
+    python ldc_elo.py --source clubelo 2026-09-07
 
 Dépendances : bibliothèque standard Python uniquement.
 """
@@ -41,6 +42,7 @@ import urllib.request
 HERE = Path(__file__).resolve().parent
 OUTPUT_FILE = HERE / "elo.json"
 DEFAULT_HTML = HERE / "clubelo_ranking.html"
+CLUBELO_RANKING_URL = "https://clubelo.com/Ranking"
 BEYONDELO_API_KEY = "be_53JJFu4692fXmqaSUFz7ykzKlEOHrRlcDpUP3eZrj-s"
 
 # Noms du projet -> variantes possibles des noms affichés par ClubElo.
@@ -376,6 +378,33 @@ def _find_local_html_files() -> list[Path]:
     return candidates
 
 
+def _download_clubelo_html(dest: Path = DEFAULT_HTML) -> str:
+    """Télécharge https://clubelo.com/Ranking et remplace atomiquement clubelo_ranking.html.
+
+    Le contenu est validé via extract_records_from_html() avant tout remplacement,
+    afin de ne jamais écraser un fichier local valide par une page d'erreur.
+    """
+    request = urllib.request.Request(
+        CLUBELO_RANKING_URL,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "text/html,application/xhtml+xml",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=15) as response:
+        raw = response.read()
+
+    html = raw.decode("utf-8", errors="replace")
+    records, summary = extract_records_from_html(html)
+    if not records:
+        raise ValueError(f"Aucune donnée Club/Elo extraite depuis {CLUBELO_RANKING_URL} ({summary})")
+
+    temp_path = dest.with_suffix(".html.tmp")
+    temp_path.write_bytes(raw)
+    temp_path.replace(dest)
+    return summary
+
+
 def _fetch_api_clubelo(date: str) -> str:
     """Essaie l'ancienne API CSV (utile si ClubElo la remet en service)."""
     errors = []
@@ -454,9 +483,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "-s",
         "--source",
-        choices=("html", "clubelo", "beyondelo"),
-        default="html",
-        help="Source à utiliser : html (fichiers locaux, défaut), clubelo (API) ou beyondelo (API).",
+        choices=("clubelo", "beyondelo"),
+        default="clubelo",
+        help="Source à utiliser : clubelo (API avec repli HTML automatique, défaut) ou beyondelo (API).",
+    )
+    parser.add_argument(
+        "--no-download",
+        action="store_true",
+        help="Pour clubelo : n'appelle pas le réseau et réutilise directement clubelo_ranking.html local.",
     )
     parser.add_argument(
         "targets",
@@ -466,92 +500,97 @@ def main(argv: list[str] | None = None) -> int:
     )
     parsed = parser.parse_args(argv)
     targets: list[str] = parsed.targets
+    today_iso = dt.date.today().isoformat()
 
-    # Argument(s) HTML explicite(s) : le script lit exactement les fichiers fournis.
+    def _read_html_sources(paths: list[Path]) -> tuple[list[tuple[str, float]], str]:
+        collected: list[tuple[str, float]] = []
+        print("Lecture des pages HTML ClubElo :")
+        for path in paths:
+            try:
+                html = _read_html_file(path)
+                page_records, summary = extract_records_from_html(html)
+                collected.extend(page_records)
+                print(f"  - {path.name} : {summary}")
+            except Exception as exc:  # noqa: BLE001 - diagnostic de chaque fichier local
+                print(f"  - {path.name} : ERREUR : {exc}")
+        return collected, ", ".join(path.name for path in paths)
+
+    # Argument(s) HTML explicite(s) : le script lit exactement les fichiers fournis sans appel réseau.
     html_args = [Path(arg).expanduser() for arg in targets if arg.lower().endswith((".html", ".htm"))]
     if html_args:
-        if parsed.source in ("clubelo", "beyondelo"):
-            print(f"L'option --source {parsed.source} ne s'utilise pas avec des fichiers HTML.", file=sys.stderr)
+        if parsed.source == "beyondelo":
+            print("L'option --source beyondelo ne s'utilise pas avec des fichiers HTML.", file=sys.stderr)
             return 2
         html_args = [p if p.is_absolute() or p.is_file() else HERE / p for p in html_args]
         missing_files = [str(p) for p in html_args if not p.is_file()]
         if missing_files:
             print("Fichier(s) HTML introuvable(s) : " + ", ".join(missing_files), file=sys.stderr)
             return 1
-        html_files = [p.resolve() for p in html_args]
-        requested_date = dt.date.today().isoformat()
+        records, source = _read_html_sources([p.resolve() for p in html_args])
+        data_date = today_iso
     else:
         if len(targets) > 1:
             parser.print_usage(sys.stderr)
             return 2
-        if targets and parsed.source == "html":
-            print("Une date historique nécessite --source clubelo ou --source beyondelo.", file=sys.stderr)
-            return 2
-        requested_date = targets[0] if targets else dt.date.today().isoformat()
+        requested_date = targets[0] if targets else today_iso
         try:
             dt.date.fromisoformat(requested_date)
         except ValueError:
             parser.print_usage(sys.stderr)
             return 2
-        html_files = _find_local_html_files() if parsed.source == "html" else []
 
-    records: list[tuple[str, float]] = []
-    if parsed.source == "html" and not html_files:
-        print(
-            "Aucun fichier HTML local trouvé (clubelo_ranking.html ou clubelo_*.html).",
-            file=sys.stderr,
-        )
-        return 1
-    if html_files:
-        print("Lecture des pages HTML ClubElo téléchargées :")
-        for path in html_files:
-            try:
-                html = _read_html_file(path)
-                page_records, summary = extract_records_from_html(html)
-                records.extend(page_records)
-                print(f"  - {path.name} : {summary}")
-            except Exception as exc:  # noqa: BLE001 - diagnostic de chaque fichier local
-                print(f"  - {path.name} : ERREUR : {exc}")
-        source = ", ".join(path.name for path in html_files)
-        data_date = dt.date.today().isoformat()
-    else:
-        api_sources = {
-            "clubelo": ("API ClubElo", _fetch_api_clubelo),
-            "beyondelo": ("API beyondELO", _fetch_api_beyondelo),
-        }
-        api_label, fetch_fn = api_sources[parsed.source]
-        # Les pages HTML téléchargées représentent le classement courant. Pour
-        # une date historique, seule l'API datée peut fournir le bon instantané.
-        try:
-            if requested_date == dt.date.today().isoformat():
-                print(f"Tentative de {api_label}...")
-            else:
-                print(f"Tentative de {api_label} historique du {requested_date}...")
-            csv_text = fetch_fn(requested_date)
-            records = _parse_csv(csv_text)
-            source = api_label
-            data_date = requested_date
-        except Exception as exc:
-            print(f"{api_label} indisponible : {exc}", file=sys.stderr)
-            fallback_html = _find_local_html_files() if parsed.source == "clubelo" else []
-            if fallback_html and requested_date == dt.date.today().isoformat():
-                print("Bascule automatique sur les pages HTML ClubElo locales :")
-                for path in fallback_html:
-                    try:
-                        html = _read_html_file(path)
-                        page_records, summary = extract_records_from_html(html)
-                        records.extend(page_records)
-                        print(f"  - {path.name} : {summary}")
-                    except Exception as html_exc:  # noqa: BLE001
-                        print(f"  - {path.name} : ERREUR : {html_exc}")
-                source = ", ".join(path.name for path in fallback_html)
-                data_date = dt.date.today().isoformat()
-            else:
-                if requested_date != dt.date.today().isoformat():
-                    print("Une page HTML actuelle ne peut pas remplacer un classement historique.", file=sys.stderr)
-                elif parsed.source == "clubelo":
-                    print("Télécharge la page ClubElo sous le nom clubelo_ranking.html puis relance.", file=sys.stderr)
+        if parsed.source == "clubelo" and parsed.no_download:
+            html_files = _find_local_html_files()
+            if not html_files:
+                print(
+                    "Aucun fichier HTML local trouvé (clubelo_ranking.html ou clubelo_*.html).",
+                    file=sys.stderr,
+                )
                 return 1
+            records, source = _read_html_sources(html_files)
+            data_date = today_iso
+        else:
+            api_sources = {
+                "clubelo": ("API ClubElo", _fetch_api_clubelo),
+                "beyondelo": ("API beyondELO", _fetch_api_beyondelo),
+            }
+            api_label, fetch_fn = api_sources[parsed.source]
+            try:
+                if requested_date == today_iso:
+                    print(f"Tentative de {api_label}...")
+                else:
+                    print(f"Tentative de {api_label} historique du {requested_date}...")
+                csv_text = fetch_fn(requested_date)
+                records = _parse_csv(csv_text)
+                source = api_label
+                data_date = requested_date
+            except Exception as exc:
+                print(f"{api_label} indisponible : {exc}", file=sys.stderr)
+                if parsed.source == "clubelo" and requested_date == today_iso:
+                    # Repli intégré à la pipeline ClubElo : télécharge le HTML à jour puis parse localement.
+                    print(f"Bascule sur le téléchargement HTML automatique ({CLUBELO_RANKING_URL})...")
+                    try:
+                        summary = _download_clubelo_html(DEFAULT_HTML)
+                        print(f"  OK  {DEFAULT_HTML.name} mis à jour ({summary})")
+                    except Exception as dl_exc:  # noqa: BLE001 - repli sur le HTML local existant
+                        print(
+                            f"  Avertissement : téléchargement HTML impossible ({dl_exc}). "
+                            "Utilisation du fichier local existant.",
+                            file=sys.stderr,
+                        )
+                    html_files = _find_local_html_files()
+                    if not html_files:
+                        print(
+                            "Aucun fichier HTML ClubElo disponible (téléchargement échoué et aucun fichier local).",
+                            file=sys.stderr,
+                        )
+                        return 1
+                    records, source = _read_html_sources(html_files)
+                    data_date = today_iso
+                else:
+                    if requested_date != today_iso:
+                        print("Une page HTML actuelle ne peut pas remplacer un classement historique.", file=sys.stderr)
+                    return 1
 
     elo, missing, matched = match_project_teams(records)
     print(f"\nÉquipes reconnues : {len(elo)}/{len(CLUBELO_NAMES)}")

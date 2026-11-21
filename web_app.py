@@ -44,11 +44,7 @@ _SIM_LOCK = threading.Lock()
 
 
 def _resolve_output_folder(source: str) -> str:
-    """Retourne le dossier d'outputs effectif (clubelo utilise html en secours si besoin)."""
-    if (OUTPUTS_DIR / source / "probabilites_equipes.csv").is_file():
-        return source
-    if source == "clubelo" and (OUTPUTS_DIR / "html" / "probabilites_equipes.csv").is_file():
-        return "html"
+    """Retourne le dossier d'outputs correspondant à la source demandée."""
     return source
 
 

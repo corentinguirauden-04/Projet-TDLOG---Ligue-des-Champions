@@ -457,6 +457,16 @@ def prob_objectives(sim, objectives):
     return float(ok.mean())  # proportion de scénarios où tous les objectifs sont atteints
 
 
+def points_by_position(sim):
+    """Matrice (n_sims, N_TEAMS) des points du club classé à chaque place (colonne x-1 = place x).
+
+    Pour chaque simulation, trie les équipes par rang croissant (1re à 36e) et
+    renvoie le nombre de points correspondant à chaque position finale.
+    """
+    order = np.argsort(sim["ranks"], axis=1)
+    return np.take_along_axis(sim["pts"], order, axis=1)
+
+
 def points_thresholds(sim, positions=(8, 9, 16, 17, 24, 25)):
     """Distribution des points obtenus par l'équipe qui finit à certaines places.
 

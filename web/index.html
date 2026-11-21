@@ -1143,7 +1143,8 @@
           <div class="pill-group" id="standings-subtabs">
             <button class="pill-btn active" data-sub="sub-table" type="button">Tableau interactif</button>
             <button class="pill-btn" data-sub="sub-overview" type="button">Vue d'ensemble (Graphique)</button>
-            <button class="pill-btn" data-sub="sub-thresholds" type="button">Points requis (Top 8 / 16 / 24)</button>
+            <button class="pill-btn" data-sub="sub-thresholds" type="button">Seuils globaux (Points)</button>
+            <button class="pill-btn" data-sub="sub-rank-points" type="button">Points par place (1re–36e)</button>
           </div>
         </div>
 
@@ -1193,6 +1194,30 @@
           </div>
           <div class="single-chart-wrap">
             <img id="img-global-thresholds" src="" alt="Seuils de points Top 8 / 16 / 24">
+          </div>
+        </div>
+
+        <!-- Sous-vue 4 : Distribution des points par place (1re à 36e) -->
+        <div id="sub-rank-points" style="display: none; margin-top: 16px;">
+          <div class="chart-caption">
+            Distribution du nombre de points obtenus par le club terminant exactement à la place sélectionnée (de la 1re à la 36e place).
+          </div>
+          <div class="chart-subtabs" style="margin-bottom: 14px;">
+            <div class="control-row">
+              <button id="prev-rank-pos" class="btn-ghost" type="button">← Place préc.</button>
+              <select id="rank-pos-select"></select>
+              <button id="next-rank-pos" class="btn-ghost" type="button">Place suiv. →</button>
+            </div>
+            <div class="control-row" id="rank-pos-shortcuts">
+              <button class="btn-ghost" data-rank-pos="1" type="button">1re place</button>
+              <button class="btn-ghost" data-rank-pos="8" type="button">8e (Top 8)</button>
+              <button class="btn-ghost" data-rank-pos="16" type="button">16e (Tête de série)</button>
+              <button class="btn-ghost" data-rank-pos="24" type="button">24e (Barrages)</button>
+              <button class="btn-ghost" data-rank-pos="36" type="button">36e (Dernier)</button>
+            </div>
+          </div>
+          <div class="single-chart-wrap">
+            <img id="img-rank-points" src="" alt="Distribution des points pour la place sélectionnée">
           </div>
         </div>
       </div>
@@ -1318,6 +1343,7 @@
       defaultElo: {},
       manualElo: {},
       selectedTeam: "PSG",
+      selectedRankPos: 8,
       duelA: "PSG",
       duelB: "Bayern",
       activeChart: "classement",
@@ -1666,6 +1692,28 @@
       }
     }
 
+    function renderRankPointsChart() {
+      const sel = document.getElementById("rank-pos-select");
+      if (sel && sel.options.length === 0) {
+        sel.innerHTML = Array.from({ length: 36 }, (_, i) => {
+          const p = i + 1;
+          const label = p === 1 ? "1re place" : `${p}e place`;
+          return `<option value="${p}">${label}</option>`;
+        }).join("");
+      }
+      if (sel) sel.value = String(state.selectedRankPos);
+
+      document.querySelectorAll("#rank-pos-shortcuts [data-rank-pos]").forEach(btn => {
+        btn.classList.toggle("active", parseInt(btn.dataset.rankPos, 10) === state.selectedRankPos);
+      });
+
+      const img = document.getElementById("img-rank-points");
+      if (img) {
+        img.src = `/outputs/${state.outputFolder}/classements/${state.selectedRankPos}.png?t=${state.cacheBust}`;
+        img.onclick = () => openLightbox(img.src);
+      }
+    }
+
     function renderStandingsPage() {
       const q = `?t=${state.cacheBust}`;
       const ovImg = document.getElementById("img-global-overview");
@@ -1674,6 +1722,7 @@
       thImg.src = `/outputs/${state.outputFolder}/seuils_points_top_8_16_24.png${q}`;
       ovImg.onclick = () => openLightbox(ovImg.src);
       thImg.onclick = () => openLightbox(thImg.src);
+      renderRankPointsChart();
 
       const filtered = state.teams.filter(t => {
         if (state.tableFilter === "top8") return t.top8 >= 0.5;
@@ -1915,9 +1964,31 @@
       btn.onclick = () => {
         document.querySelectorAll("#standings-subtabs .pill-btn").forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
-        for (const id of ["sub-table", "sub-overview", "sub-thresholds"]) {
+        for (const id of ["sub-table", "sub-overview", "sub-thresholds", "sub-rank-points"]) {
           document.getElementById(id).style.display = (id === btn.dataset.sub) ? "block" : "none";
         }
+      };
+    });
+
+    document.getElementById("rank-pos-select").onchange = (e) => {
+      state.selectedRankPos = parseInt(e.target.value, 10) || 1;
+      renderRankPointsChart();
+    };
+
+    document.getElementById("prev-rank-pos").onclick = () => {
+      state.selectedRankPos = state.selectedRankPos > 1 ? state.selectedRankPos - 1 : 36;
+      renderRankPointsChart();
+    };
+
+    document.getElementById("next-rank-pos").onclick = () => {
+      state.selectedRankPos = state.selectedRankPos < 36 ? state.selectedRankPos + 1 : 1;
+      renderRankPointsChart();
+    };
+
+    document.querySelectorAll("#rank-pos-shortcuts [data-rank-pos]").forEach(btn => {
+      btn.onclick = () => {
+        state.selectedRankPos = parseInt(btn.dataset.rankPos, 10) || 1;
+        renderRankPointsChart();
       };
     });
 
