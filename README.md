@@ -103,7 +103,7 @@ python ldc_elo.py --source clubelo      # idem
 python ldc_elo.py --no-download         # relit clubelo_ranking.html local sans appel réseau
 ```
 
-Le parseur lit les tableaux HTML et les objets JSON/Vega intégrés aux balises `<script>`, normalise les noms (accents, casse, ponctuation) et utilise les variantes de `CLUBELO_NAMES`. Si des pages nationales complémentaires (`clubelo_ENG.html`, `clubelo_FRA.html`, etc.) sont placées dans le dossier, le script les agrège automatiquement. Les quelques clubs absents de la page générale ClubElo sont complétés par `DEFAULT_ELO` (affiché dans la console) avant l'écriture de `elo.json`.
+Le parseur extrait en priorité le tableau JavaScript `eloData` (classement mondial complet de ~1 750 clubs trié par Elo décroissant, permettant de retrouver les **36/36 clubs** directement), puis les tableaux HTML et les objets JSON/Vega intégrés aux balises `<script>`, en normalisant les noms (accents, casse, ponctuation) via `CLUBELO_NAMES`. Si un club venait malgré tout à manquer, il serait complété par `DEFAULT_ELO` (affiché dans la console) avant l'écriture de `elo.json`.
 
 Il reste également possible de fournir explicitement un ou plusieurs fichiers HTML déjà téléchargés (sans déclencher de téléchargement) :
 

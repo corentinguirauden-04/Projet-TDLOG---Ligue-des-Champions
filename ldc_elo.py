@@ -26,8 +26,10 @@ Dépendances : bibliothèque standard Python uniquement.
 from __future__ import annotations
 
 import argparse
+import ast
 import csv
 import datetime as dt
+import html as html_lib
 import io
 import json
 import re
@@ -248,6 +250,45 @@ def _json_objects_from_script(script: str) -> Iterable[Any]:
         yield value
 
 
+def _extract_elo_data_from_script(script: str) -> list[tuple[str, float]]:
+    """Extrait le tableau JS `const eloData = [['<td...>...</td>', '2044', ...], ...]` de ClubElo.
+
+    Sur https://clubelo.com/Ranking, le classement complet (~1 750 clubs, trié par Elo
+    décroissant) est embarqué dans ce tableau JS à guillemets simples puis injecté dans
+    le DOM par `JSSortableEloTable`. Il échappe donc au parseur HTML statique et à JSON.
+    """
+    match = re.search(r"(?:const|let|var)\s+eloData\s*=\s*(\[\[.*?\]\])\s*;", script, re.S)
+    if not match:
+        return []
+
+    raw_rows: list[tuple[str, str]] = []
+    try:
+        parsed = ast.literal_eval(match.group(1))
+        if isinstance(parsed, list):
+            for row in parsed:
+                if isinstance(row, (list, tuple)) and len(row) >= 2:
+                    raw_rows.append((str(row[0]), str(row[1])))
+    except (SyntaxError, ValueError):
+        for cell_html, elo_str in re.findall(
+            r"\[\s*'(<td\b.*?</td>)'\s*,\s*'([^']+)'", match.group(1), re.S
+        ):
+            raw_rows.append((cell_html, elo_str))
+
+    records: list[tuple[str, float]] = []
+    for cell_html, elo_str in raw_rows:
+        elo = _to_float(elo_str)
+        if elo is None:
+            continue
+        links = re.findall(r"<a\b[^>]*>(.*?)</a>", cell_html, re.S | re.I)
+        if not links:
+            continue
+        # Le premier <a> contient le drapeau (<img> sans texte), le dernier contient le nom du club.
+        name = html_lib.unescape(re.sub(r"<[^>]+>", "", links[-1])).strip()
+        if name:
+            records.append((name, elo))
+    return records
+
+
 def _extract_table_rows(tables: list[list[list[str]]]) -> list[tuple[str, float]]:
     """Lit les tableaux HTML ayant une ligne d'en-tête Club/Elo."""
     records: list[tuple[str, float]] = []
@@ -261,7 +302,8 @@ def _extract_table_rows(tables: list[list[list[str]]]) -> list[tuple[str, float]
             for data_row in table[header_index + 1:]:
                 if max(name_idx, elo_idx) >= len(data_row):
                     continue
-                name = data_row[name_idx].strip()
+                # Retire un éventuel rang numérique en préfixe (ex. "117 Viking" dans un DOM sauvegardé).
+                name = re.sub(r"^\d+\s+", "", data_row[name_idx].strip())
                 elo = _to_float(data_row[elo_idx])
                 if name and elo is not None:
                     records.append((name, elo))
@@ -272,7 +314,8 @@ def _extract_table_rows(tables: list[list[list[str]]]) -> list[tuple[str, float]
 def extract_records_from_html(html: str) -> tuple[list[tuple[str, float]], str]:
     """Extrait les paires Club/Elo d'une page HTML téléchargée.
 
-    Gère les tableaux HTML et les données JSON/Vega intégrées dans les scripts.
+    Gère en priorité le tableau JS `eloData` (classement mondial complet trié par Elo),
+    puis les tableaux HTML et les données JSON/Vega intégrées dans les scripts.
     Retourne aussi un résumé diagnostique de la page.
     """
     collector = _HTMLCollector()
@@ -292,7 +335,10 @@ def extract_records_from_html(html: str) -> tuple[list[tuple[str, float]], str]:
             "Ouvre ClubElo manuellement, attends la fin du chargement, puis enregistre à nouveau la page."
         )
 
-    records = _extract_table_rows(collector.tables)
+    records: list[tuple[str, float]] = []
+    for script in collector.scripts:
+        records.extend(_extract_elo_data_from_script(script))
+    records.extend(_extract_table_rows(collector.tables))
     for script in collector.scripts:
         for obj in _json_objects_from_script(script):
             records.extend(_walk_json(obj))
