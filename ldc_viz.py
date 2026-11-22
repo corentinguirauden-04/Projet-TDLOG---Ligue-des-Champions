@@ -165,9 +165,15 @@ def team_card(team, sim, table, path, n_sims=None, rank_dist=None, qualification
              ("ÉLIMINATION", f"Places 25 à {s.N_TEAMS}", pct(q["out"]), C_OUT)]
     _draw_kpi_boxes(fig, boxes)
 
+    team_idx = s.IDX[team]
+    mean_rank = float(np.mean(sim["ranks"][:, team_idx]))
+    std_rank = float(np.std(sim["ranks"][:, team_idx]))
+    std_pts = float(np.std(sim["pts"][:, team_idx]))
     fig.text(0.07, 0.055,
-             f"Points finaux moyens : {q['exp_pts']:.1f}   ·   Probabilité de barrages (9-{s.N_TEAMS if s.N_TEAMS < 24 else 24}) : {pct(q['playoff'])}",
-             fontsize=9, color=MUTED, va="center")
+             f"Rang moyen : {mean_rank:.1f}e (écart-type : {std_rank:.1f})  ·  "
+             f"Points moyens : {q['exp_pts']:.1f} (écart-type : {std_pts:.1f})  ·  "
+             f"Barrages (9-{s.N_TEAMS if s.N_TEAMS < 24 else 24}) : {pct(q['playoff'])}",
+             fontsize=8.8, color=MUTED, va="center")
     fig.text(0.07, 0.025,
              f"Monte Carlo : {n_sims:,} simulations · Modèle Elo + loi de Poisson".replace(",", " "),
              fontsize=8, color=MUTED, va="center")
@@ -301,6 +307,7 @@ def team_points_card(team, sim, table, path, n_sims=None, qualifications=None):
     vals = 100 * dist[p_min:p_max + 1]
 
     p10, p90 = np.percentile(team_pts, [10, 90])
+    std_pts = float(np.std(team_pts))
 
     # Couleurs cohérentes avec les encadrés KPI :
     # - vert-cyan (C_TOP8) = moyenne attendue (encadré + trait pointillé vertical) ;
@@ -343,7 +350,7 @@ def team_points_card(team, sim, table, path, n_sims=None, qualifications=None):
     )
 
     boxes = [
-        ("POINTS MOYENS", f"Max : {max_possible} pts", f"{q['exp_pts']:.1f} pts", C_TOP8),
+        ("POINTS MOYENS", f"Écart-type : {std_pts:.1f} pts · Max : {max_possible}", f"{q['exp_pts']:.1f} pts", C_TOP8),
         ("PLAGE PROBABLE (80 % DES SCÉNARIOS)", "", f"{p10:.0f} - {p90:.0f} pts", C_PLAY),
         ("POINTS ACTUELS", "", f"{cur['pts']} pts", c_neutral),
     ]
@@ -354,7 +361,7 @@ def team_points_card(team, sim, table, path, n_sims=None, qualifications=None):
         plt.Line2D([0.07, 0.095], [0.630, 0.630], transform=fig.transFigure,
                    color=C_TOP8, linestyle="--", linewidth=2.0)
     )
-    fig.text(0.102, 0.630, f"Moyenne attendue ({q['exp_pts']:.1f} pts)", fontsize=9, color=TXT, va="center")
+    fig.text(0.102, 0.630, f"Moyenne : {q['exp_pts']:.1f} pts (σ = {std_pts:.1f})", fontsize=9, color=TXT, va="center")
     fig.patches.append(Rectangle((0.365, 0.623), 0.012, 0.014, transform=fig.transFigure, facecolor=C_PLAY))
     fig.text(0.383, 0.630, f"Plage probable 80 % ({p10:.0f}-{p90:.0f} pts)", fontsize=9, color=TXT, va="center")
     fig.patches.append(Rectangle((0.685, 0.623), 0.012, 0.014, transform=fig.transFigure, facecolor=c_tail))
@@ -534,8 +541,9 @@ def points_thresholds_card(sim, path, n_sims=None):
     ):
         dist = thresholds[pos]
         mean_p = float(np.sum(pts_axis * dist))
+        std_p = float(np.sqrt(np.sum(dist * (pts_axis - mean_p) ** 2)))
         mode_p = int(np.argmax(dist))
-        kpis.append((label, f"Seuil le plus fréquent : {mode_p} pts", f"{mean_p:.1f} pts", col))
+        kpis.append((label, f"Écart-type : {std_p:.1f} · Mode : {mode_p} pts", f"{mean_p:.1f} pts", col))
     _draw_kpi_boxes(fig, kpis)
 
     legend_items = [
@@ -576,6 +584,7 @@ def position_points_card(position, sim, path, n_sims=None, pts_by_rank=None):
     vals = 100.0 * dist[p_min:p_max + 1]
 
     mean_p = float(np.mean(pos_pts))
+    std_p = float(np.std(pos_pts))
     mode_p = int(np.argmax(dist))
     p10, p90 = np.percentile(pos_pts, [10, 90])
 
@@ -628,7 +637,7 @@ def position_points_card(position, sim, path, n_sims=None, pts_by_rank=None):
     )
 
     boxes = [
-        ("POINTS MOYENS", f"Place n°{position} / {s.N_TEAMS}", f"{mean_p:.1f} pts", C_TOP8),
+        ("POINTS MOYENS", f"Écart-type : {std_p:.1f} pts", f"{mean_p:.1f} pts", C_TOP8),
         ("PLAGE PROBABLE (80 % DES SCÉNARIOS)", "", f"{p10:.0f} - {p90:.0f} pts", C_PLAY),
         ("SCORE LE PLUS FRÉQUENT", f"Probabilité : {pct(dist[mode_p])}", f"{mode_p} pts", _zone_color(position)),
     ]
@@ -638,7 +647,7 @@ def position_points_card(position, sim, path, n_sims=None, pts_by_rank=None):
         plt.Line2D([0.07, 0.095], [0.630, 0.630], transform=fig.transFigure,
                    color=C_TOP8, linestyle="--", linewidth=2.0)
     )
-    fig.text(0.102, 0.630, f"Moyenne attendue ({mean_p:.1f} pts)", fontsize=9, color=TXT, va="center")
+    fig.text(0.102, 0.630, f"Moyenne : {mean_p:.1f} pts (σ = {std_p:.1f})", fontsize=9, color=TXT, va="center")
     fig.patches.append(Rectangle((0.365, 0.623), 0.012, 0.014, transform=fig.transFigure, facecolor=C_PLAY))
     fig.text(0.383, 0.630, f"Plage probable 80 % ({p10:.0f}-{p90:.0f} pts)", fontsize=9, color=TXT, va="center")
     fig.patches.append(Rectangle((0.685, 0.623), 0.012, 0.014, transform=fig.transFigure, facecolor=c_tail))

@@ -231,10 +231,10 @@ for club, valeurs in sorted(
 | Fonction | Fichier produit / contenu |
 |---|---|
 | `overview(sim, table, path)` | Vue globale des 36 équipes, avec les probabilités Top 8 / barrages / élimination et le repère dynamique *« après la journée n, en date du xxx »*. |
-| `points_thresholds_card(sim, path, n_sims=None)` | Vue globale des seuils : barres empilées à 100 % donnant la probabilité de qualification directe, barrages ou élimination selon le nombre de points. |
-| `position_points_card(position, sim, path, n_sims=None)` | Distribution du nombre de points obtenus par le club classé à la position `position` (1re à 36e), avec moyenne, plage probable 80 % et score le plus fréquent. |
-| `team_card(team, sim, table, path, n_sims=None)` | Fiche d'une équipe : distribution des 36 places possibles et trois indicateurs de qualification. |
-| `team_points_card(team, sim, table, path, n_sims=None)` | Fiche d'une équipe : distribution des points finaux, moyenne, plage probable (10e–90e percentile) et points actuels/max. |
+| `points_thresholds_card(sim, path, n_sims=None)` | Vue globale des seuils : barres empilées à 100 % donnant la probabilité de qualification directe, barrages ou élimination selon le nombre de points (avec moyenne, écart-type et mode des seuils Top 8 / 16 / 24). |
+| `position_points_card(position, sim, path, n_sims=None)` | Distribution du nombre de points obtenus par le club classé à la position `position` (1re à 36e), avec moyenne, écart-type, plage probable 80 % et score le plus fréquent. |
+| `team_card(team, sim, table, path, n_sims=None)` | Fiche d'une équipe : distribution des 36 places possibles, indicateurs de qualification, rang moyen et points moyens (avec leurs écarts-types). |
+| `team_points_card(team, sim, table, path, n_sims=None)` | Fiche d'une équipe : distribution des points finaux, moyenne, écart-type, plage probable (10e–90e percentile) et points actuels/max. |
 | `team_important_matches_card(team, sim, table, path, n_sims=None)` | Fiche d'une équipe : Top 10 des matchs restants les plus décisifs (les siens et ceux des concurrents), classés par le plus grand écart de classement final moyen (en places) entre les 3 issues (`1` / `N` / `2`). |
 | `objectives_card(sim, objectives, path)` | Fiche de scénario : probabilité de chaque objectif et probabilité jointe que tous soient atteints. |
 
