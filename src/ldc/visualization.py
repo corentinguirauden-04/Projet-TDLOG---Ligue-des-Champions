@@ -450,8 +450,8 @@ def team_important_matches_card(
             va="center",
             fontsize=12.5,
             fontweight="bold",
-            color=MUTED,
-            bbox=dict(facecolor=PANEL, edgecolor=MUTED, alpha=0.85, pad=12),
+            color=TXT,
+            bbox=dict(facecolor="#162266", edgecolor=MUTED, alpha=0.94, pad=14),
         )
     else:
         ax.barh(y, vals, color=cols, height=0.62, zorder=3)
