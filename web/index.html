@@ -141,29 +141,14 @@
                 <button class="pill-btn active" data-chart="classement" type="button">1. Classement final projeté</button>
                 <button class="pill-btn" data-chart="points" type="button">2. Nombre de points attendus</button>
                 <button class="pill-btn" data-chart="matchs_cles" type="button">3. Les 10 matchs décisifs</button>
-                <button class="pill-btn" data-chart="all" type="button">Voir les 3 ensemble</button>
+                <button class="pill-btn" data-chart="calendrier" type="button">4. Calendrier à venir</button>
+                <button class="pill-btn" data-chart="all" type="button">Voir les 3 graphiques</button>
               </div>
-              <span class="brand-sub">Astuce : cliquez sur un graphique pour l'agrandir</span>
+              <span class="brand-sub" id="club-zoom-hint">Astuce : cliquez sur un graphique pour l'agrandir</span>
             </div>
 
             <div id="club-chart-caption" class="chart-caption"></div>
             <div id="club-chart-display"></div>
-          </div>
-
-          <div class="chart-stage club-schedule-stage">
-            <div class="chart-subtabs">
-              <div>
-                <h3 class="section-title" id="club-schedule-title" style="font-size: 1.15rem; margin-bottom: 2px;">Calendrier à venir</h3>
-                <p class="brand-sub" id="club-schedule-sub">Affiches restantes, probabilités (1 / N / 2) et importance pour chaque club.</p>
-              </div>
-              <div class="cal-legend">
-                <span class="cal-legend-item"><span class="legend-swatch" style="background: var(--top8);"></span>Domicile</span>
-                <span class="cal-legend-item"><span class="legend-swatch" style="background: #6f82cf;"></span>Nul</span>
-                <span class="cal-legend-item"><span class="legend-swatch" style="background: var(--play);"></span>Extérieur</span>
-                <span class="cal-legend-item"><span class="legend-swatch" style="background: var(--out);"></span>Choc décisif</span>
-              </div>
-            </div>
-            <div id="club-upcoming-matches" class="matches-grid club-matches-grid"></div>
           </div>
         </div>
       </div>

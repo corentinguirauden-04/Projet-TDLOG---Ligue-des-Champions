@@ -30,6 +30,7 @@ const chartDescriptions = {
   classement: "Probabilité pour le club de terminer à chacune des 36 places finales, de la 36e place à gauche jusqu'à la 1re place à droite (rose : élimination, jaune : barrages, vert : Top 8 direct).",
   points: "Distribution du total de points en fin de phase de ligue. Le trait pointillé vert indique la moyenne attendue et les barres jaunes représentent la plage probable (80 % des scénarios).",
   matchs_cles: "Les 10 rencontres à venir (parmi tous les matchs de la compétition) qui créent le plus grand écart de classement final moyen pour le club selon leur issue (1 / N / 2).",
+  calendrier: "Affiches restantes du club avec les probabilités (Domicile / Nul / Extérieur) et l'écart de classement final moyen en jeu pour chacune des deux équipes.",
   all: "Vue complète réunissant les trois graphiques du club côte à côte.",
 };
 
@@ -353,13 +354,18 @@ function renderClubExplorer() {
     </div>
   `;
 
-  document.getElementById("club-chart-caption").textContent = chartDescriptions[state.activeChart];
-
+  const captionEl = document.getElementById("club-chart-caption");
+  const zoomHint = document.getElementById("club-zoom-hint");
   const base = `/outputs/${state.outputFolder}/equipes/${club.slug}`;
   const q = `?t=${state.cacheBust}`;
   const display = document.getElementById("club-chart-display");
 
-  if (state.activeChart === "all") {
+  if (state.activeChart === "calendrier") {
+    if (zoomHint) zoomHint.style.display = "none";
+    renderClubUpcomingTab(club.team, captionEl, display);
+  } else if (state.activeChart === "all") {
+    if (zoomHint) zoomHint.style.display = "";
+    captionEl.textContent = chartDescriptions.all;
     display.innerHTML = `
       <div class="triple-chart-grid">
         <img src="${base}/classement.png${q}" alt="Classement ${club.team}" onclick="openLightbox(this.src)">
@@ -368,6 +374,8 @@ function renderClubExplorer() {
       </div>
     `;
   } else {
+    if (zoomHint) zoomHint.style.display = "";
+    captionEl.textContent = chartDescriptions[state.activeChart];
     const src = `${base}/${state.activeChart}.png${q}`;
     display.innerHTML = `
       <div class="single-chart-wrap">
@@ -375,16 +383,9 @@ function renderClubExplorer() {
       </div>
     `;
   }
-
-  renderClubUpcomingMatches(club.team);
 }
 
-function renderClubUpcomingMatches(teamName) {
-  const box = document.getElementById("club-upcoming-matches");
-  const titleEl = document.getElementById("club-schedule-title");
-  const subEl = document.getElementById("club-schedule-sub");
-  if (!box) return;
-
+function renderClubUpcomingTab(teamName, captionEl, displayEl) {
   const teamMap = new Map(state.teams.map(t => [t.team, t]));
   const upcoming = state.remaining
     .filter(m => m.home === teamName || m.away === teamName)
@@ -393,25 +394,24 @@ function renderClubUpcomingMatches(teamName) {
   const nHome = upcoming.filter(m => m.home === teamName).length;
   const nAway = upcoming.length - nHome;
 
-  if (titleEl) {
-    titleEl.textContent = `Calendrier à venir — ${teamName}`;
-  }
-  if (subEl) {
-    subEl.textContent = upcoming.length > 0
-      ? `${upcoming.length} affiches restantes (${nHome} à domicile, ${nAway} à l'extérieur) · Probabilités 1 / N / 2 et importance pour les deux clubs`
-      : "Aucun match restant pour ce club.";
+  if (captionEl) {
+    captionEl.textContent = upcoming.length > 0
+      ? `${upcoming.length} affiches restantes pour ${teamName} (${nHome} à domicile, ${nAway} à l'extérieur) — probabilités 1 / N / 2 et impact moyen au classement final pour les deux clubs. Cliquez sur un adversaire pour ouvrir sa fiche.`
+      : `Aucun match restant pour ${teamName}.`;
   }
 
   if (upcoming.length === 0) {
-    box.innerHTML = `<div class="cal-empty">Aucune affiche restante.</div>`;
+    displayEl.innerHTML = `<div class="cal-empty">Aucune affiche restante.</div>`;
     return;
   }
 
-  box.innerHTML = upcoming
-    .map(m => renderMatchCard(m, false, teamMap, teamName))
-    .join("");
+  displayEl.innerHTML = `
+    <div class="matches-grid club-matches-grid">
+      ${upcoming.map(m => renderMatchCard(m, false, teamMap, teamName)).join("")}
+    </div>
+  `;
 
-  box.querySelectorAll(".mc-team-btn[data-team]").forEach(btn => {
+  displayEl.querySelectorAll(".mc-team-btn[data-team]").forEach(btn => {
     btn.onclick = () => selectClubAndOpen(btn.dataset.team);
   });
 }
@@ -633,7 +633,6 @@ function renderTeamMeta(teamName, teamMap) {
 
 function renderImpactBox(teamName, imp, bestRank, worstRank, isFocused = false) {
   const tier = stakesTier(imp);
-  const fillPct = Math.min(100, Math.round((imp / 7.5) * 100));
   const rangeText = bestRank > 0 && worstRank > 0
     ? `Rang moyen : ${bestRank.toFixed(1)}e → ${worstRank.toFixed(1)}e`
     : "Impact sur le classement final";
@@ -642,9 +641,6 @@ function renderImpactBox(teamName, imp, bestRank, worstRank, isFocused = false) 
       <div class="mc-imp-top">
         <span class="mc-imp-club" title="Importance pour ${teamName}">Enjeu ${teamName}</span>
         <span class="mc-imp-val ${tier.cls}">±${imp.toFixed(1)} pl.</span>
-      </div>
-      <div class="mc-imp-meter">
-        <div class="mc-imp-fill ${tier.cls}" style="width: ${fillPct}%"></div>
       </div>
       <div class="mc-imp-range">${rangeText}</div>
     </div>
@@ -721,12 +717,12 @@ function renderMatchCard(m, isPlayed, teamMap, focusTeam = null) {
       : `<span class="mc-venue-tag away">Extérieur</span>`)
     : "";
 
-  const badgeText = hasStats ? `${tier.label} · moy. ±${avgImp.toFixed(1)} pl.` : "À venir";
+  const badgeText = hasStats ? tier.label : "À venir";
 
   return `
     <article class="match-card ${cardStakesCls}">
       <div class="mc-head">
-        <span class="mc-md-tag">Journée ${m.matchday} · À venir${venueTag}</span>
+        <span class="mc-md-tag">Journée ${m.matchday}${venueTag}</span>
         <span class="mc-badge ${tier.cls}">${badgeText}</span>
       </div>
       <div class="mc-teams">
