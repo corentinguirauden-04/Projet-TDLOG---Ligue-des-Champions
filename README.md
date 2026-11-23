@@ -45,7 +45,7 @@ Projet-TDLOG---Ligue-des-Champions/
 │   └── clubelo_ranking.html             # Instantané HTML ClubElo mis à jour automatiquement
 ├── outputs/
 │   ├── clubelo/
-│   │   ├── equipes/<club>/{classement,points,matchs_cles}.png
+│   │   ├── equipes/<club>/{classement,points,seuils_points,matchs_cles,matchs_cles_top8,matchs_cles_top24}.png
 │   │   ├── classements/{1..36}.png
 │   │   ├── classement_global.png
 │   │   ├── seuils_points_top_8_16_24.png
@@ -87,10 +87,11 @@ python main.py --source beyondelo --n-sims 250000 # personnaliser le nombre de s
 python main.py --source clubelo --no-refresh      # réutiliser data/clubelo_ranking.html hors-ligne
 ```
 
-Par défaut, **100 000 simulations Monte Carlo** sont exécutées (`seed=42`) et produisent dans `outputs/<source>/` :
+Par défaut, **500 000 simulations Monte Carlo** sont exécutées (`seed=42`) et produisent dans `outputs/<source>/` :
 - `equipes/<club>/classement.png` : distribution des 36 places finales (36e à gauche → 1re à droite), encadrés alignés au-dessus de leurs zones (*Élimination* / *Barrages* / *Top 8*), rang moyen et points moyens (avec écarts-types) ;
 - `equipes/<club>/points.png` : distribution des points finaux, moyenne (vert-cyan), écart-type, plage probable 80 % (jaune) et points actuels/max ;
-- `equipes/<club>/matchs_cles.png` : Top 10 des matchs restants les plus décisifs (propres matchs et matchs des concurrents), classés par le plus grand écart de classement moyen (en places) entre les 3 issues (`1` / `N` / `2`) ;
+- `equipes/<club>/seuils_points.png` : probabilités d'issue finale (Top 8 / barrages / éliminé) selon le total final de points atteignable par ce club (en tenant compte de sa différence de buts) ;
+- `equipes/<club>/matchs_cles.png`, `matchs_cles_top8.png`, `matchs_cles_top24.png` : Top 10 des matchs restants les plus décisifs selon 3 indicateurs au choix — écart de classement moyen (en places), écart de probabilité de **Top 8** (%) et écart de probabilité de **Top 24** (%) ;
 - `classements/1.png` à `36.png` : distribution du nombre de points du club terminant exactement à la place `x` (moyenne, écart-type, plage 80 %, score le plus fréquent) ;
 - `classement_global.png` : vue globale des 36 clubs en barres empilées Top 8 / barrages / éliminé ;
 - `seuils_points_top_8_16_24.png` : barres empilées à 100 % indiquant la probabilité d'issue finale selon le nombre de points (avec moyenne, écart-type et mode des seuils Top 8 / 16 / 24) ;
@@ -116,9 +117,9 @@ python web_app.py --host 0.0.0.0
 Puis ouvrir `http://<IPv4-du-PC>:8000` (`ipconfig` sous Windows).
 
 **Onglets disponibles dans l'interface :**
-- **Barre de contrôle :** choix de la source (**ClubElo**, **beyondELO**, **Personnalisé**), nombre de scénarios (`20 000` à `1 000 000`, `100 000` par défaut), recalcul à la volée, et éditeur des 36 notes en mode *Personnalisé* (entiers entre `500` et `3 000`, réinitialisation en un clic).
+- **Barre de contrôle :** choix de la source (**ClubElo**, **beyondELO**, **Personnalisé**), nombre de scénarios (`20 000` à `1 000 000`, `500 000` par défaut), recalcul à la volée, et éditeur des 36 notes en mode *Personnalisé* (entiers entre `500` et `3 000`, réinitialisation en un clic).
 - **Accueil & Repères :** 4 paliers clés (grands favoris, bataille Top 8, cœur du peloton Top 16, fil du rasoir Top 24) + focus clubs français (PSG, Lille, Lens).
-- **Explorateur par Club :** fiche complète, 3 graphiques interactifs avec zoom plein écran et calendrier à venir du club (probabilités `1 / N / 2` et importance pour les deux équipes).
+- **Explorateur par Club :** fiche complète, 6 graphiques interactifs (classement, points, seuils de points propres au club, matchs décisifs par classement / Top 8 / Top 24) avec zoom plein écran et onglet *Calendrier à venir*.
 - **Classement & Seuils :** tableau triable/filtrable, vue globale graphique, seuils empilés par points et explorateur **Points par place (1re–36e)**.
 - **Comparateur Face-à-Face :** comparaison directe de deux clubs côte à côte.
 - **Calendrier & Scores :** sélecteur dynamique de journée (`J1`–`J8` + `Toutes`), filtre par club, tri par enjeux ou par équilibre, résultats officiels et cartes détaillées avec probabilités `1 / N / 2` et importance du match (en places) pour chacun des deux clubs.

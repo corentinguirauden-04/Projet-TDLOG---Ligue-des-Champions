@@ -171,10 +171,35 @@ def simulate(
 
     rng = np.random.default_rng(seed)
 
-    matches = [
-        (IDX[h], IDX[a], np.full(n_sims, hg), np.full(n_sims, ag))
-        for h, a, hg, ag in played
-    ]
+    # Cumule d'abord les matchs déjà joués sur un vecteur 1D (36 équipes) puis diffuse sur n_sims :
+    # évite d'allouer des dizaines de matrices (n_sims,) constantes à 500 000+ simulations.
+    base_pts = np.zeros(N_TEAMS, dtype=np.int32)
+    base_gf = np.zeros(N_TEAMS, dtype=np.int32)
+    base_ga = np.zeros(N_TEAMS, dtype=np.int32)
+    base_agf = np.zeros(N_TEAMS, dtype=np.int32)
+    base_wins = np.zeros(N_TEAMS, dtype=np.int32)
+    base_awins = np.zeros(N_TEAMS, dtype=np.int32)
+    for h, a, hg_i, ag_i in played:
+        ih, ia = IDX[h], IDX[a]
+        base_pts[ih] += 3 if hg_i > ag_i else (1 if hg_i == ag_i else 0)
+        base_pts[ia] += 3 if ag_i > hg_i else (1 if hg_i == ag_i else 0)
+        base_gf[ih] += hg_i
+        base_ga[ih] += ag_i
+        base_gf[ia] += ag_i
+        base_ga[ia] += hg_i
+        base_agf[ia] += ag_i
+        if hg_i > ag_i:
+            base_wins[ih] += 1
+        elif ag_i > hg_i:
+            base_wins[ia] += 1
+            base_awins[ia] += 1
+
+    pts = np.broadcast_to(base_pts, (n_sims, N_TEAMS)).copy()
+    gf = np.broadcast_to(base_gf, (n_sims, N_TEAMS)).copy()
+    ga = np.broadcast_to(base_ga, (n_sims, N_TEAMS)).copy()
+    agf = np.broadcast_to(base_agf, (n_sims, N_TEAMS)).copy()
+    wins = np.broadcast_to(base_wins, (n_sims, N_TEAMS)).copy()
+    awins = np.broadcast_to(base_awins, (n_sims, N_TEAMS)).copy()
 
     base_elo = np.array([elo[t] for t in TEAMS], dtype=float)
     elo_now = np.tile(base_elo, (n_sims, 1)) if update_elo else None
@@ -185,22 +210,35 @@ def simulate(
         ih, ia = IDX[h], IDX[a]
         if update_elo and elo_now is not None:
             W = win_exp(elo_now[:, ih] + HOME_BONUS, elo_now[:, ia])
-            hg = rng.poisson(lam_home(W))
-            ag = rng.poisson(lam_away(W))
+            hg = rng.poisson(lam_home(W)).astype(np.int32)
+            ag = rng.poisson(lam_away(W)).astype(np.int32)
             delta = elo_delta(W, hg, ag, k)
             elo_now[:, ih] += delta
             elo_now[:, ia] -= delta
         else:
             # Elo constant : W et les lambdas sont scalaires, tirage direct sur n_sims.
             W = win_exp(base_elo[ih] + HOME_BONUS, base_elo[ia])
-            hg = rng.poisson(float(lam_home(W)), size=n_sims)
-            ag = rng.poisson(float(lam_away(W)), size=n_sims)
+            hg = rng.poisson(float(lam_home(W)), size=n_sims).astype(np.int32)
+            ag = rng.poisson(float(lam_away(W)), size=n_sims).astype(np.int32)
 
+        home_win = hg > ag
+        away_win = ag > hg
+        draw = hg == ag
         # 0 = victoire extérieur, 1 = nul, 2 = victoire domicile.
-        match_outcomes[:, m_idx] = np.where(hg > ag, 2, np.where(hg == ag, 1, 0))
-        matches.append((ih, ia, hg, ag))
+        match_outcomes[:, m_idx] = np.where(home_win, 2, np.where(draw, 1, 0))
 
-    stats = _table_from_matches(matches, n_sims=n_sims)
+        pts[:, ih] += home_win * 3 + draw
+        pts[:, ia] += away_win * 3 + draw
+        gf[:, ih] += hg
+        ga[:, ih] += ag
+        gf[:, ia] += ag
+        ga[:, ia] += hg
+        agf[:, ia] += ag
+        wins[:, ih] += home_win
+        wins[:, ia] += away_win
+        awins[:, ia] += away_win
+
+    stats = dict(pts=pts, gf=gf, ga=ga, agf=agf, wins=wins, awins=awins)
     ranks = _rank(stats, rng)
 
     final_elo = elo_now.astype(np.float32) if elo_now is not None else base_elo.astype(np.float32)
@@ -275,10 +313,8 @@ def points_thresholds(
     }
 
 
-def qualification_by_points(sim: dict) -> dict[str, np.ndarray]:
-    """Probabilité d'issue finale (Top 8 / Barrages / Éliminé) conditionnelle au total de points (0..24)."""
-    pts = sim["pts"].ravel()
-    ranks = sim["ranks"].ravel()
+def _qualification_by_points_arrays(pts: np.ndarray, ranks: np.ndarray) -> dict[str, np.ndarray]:
+    """Calcule la probabilité conditionnelle d'issue finale pour chaque total de points (0..24)."""
     total = np.bincount(pts, minlength=25).astype(float)
     top8 = np.bincount(pts[ranks <= 8], minlength=25).astype(float)
     playoff = np.bincount(pts[(ranks >= 9) & (ranks <= 24)], minlength=25).astype(float)
@@ -294,15 +330,28 @@ def qualification_by_points(sim: dict) -> dict[str, np.ndarray]:
     return dict(total=total, top8=p_top8, playoff=p_play, out=p_out)
 
 
-def match_importance(sim: dict) -> dict[str, list[dict]]:
-    """Calcule l'importance de chaque match restant pour chaque équipe.
+def qualification_by_points(sim: dict) -> dict[str, np.ndarray]:
+    """Probabilité d'issue finale (Top 8 / Barrages / Éliminé) conditionnelle au total de points (0..24)."""
+    return _qualification_by_points_arrays(sim["pts"].ravel(), sim["ranks"].ravel())
 
-    Pour un match `m` et une équipe `t`, calcule le classement final moyen de `t`
-    conditionnellement à chacune des 3 issues possibles du match (1 / N / 2).
-    Le score d'importance est le plus grand écart de classement moyen (en places)
-    entre deux issues : `max(r) - min(r)`.
+
+def team_qualification_by_points(sim: dict, team: str) -> dict[str, np.ndarray]:
+    """Probabilité d'issue finale d'une équipe donnée conditionnelle à son total final de points (0..24)."""
+    t_idx = IDX[team]
+    return _qualification_by_points_arrays(sim["pts"][:, t_idx], sim["ranks"][:, t_idx])
+
+
+def match_importance(sim: dict) -> dict[str, list[dict]]:
+    """Calcule l'importance de chaque match restant pour chaque équipe selon 3 indicateurs :
+
+    - `importance` : plus grand écart de classement final moyen (en places) entre les 3 issues (1 / N / 2).
+    - `top8_importance` : plus grand écart de probabilité de finir Top 8 (entre 0 et 1).
+    - `top24_importance` : plus grand écart de probabilité de finir Top 24 (entre 0 et 1).
+
+    Utilise des produits matriciels par blocs (BLAS) pour rester rapide (~1 s à 500 000 tirages)
+    avec une empreinte mémoire maîtrisée et une accumulation exacte en float64.
     """
-    ranks = sim["ranks"].astype(float)
+    ranks = sim["ranks"]
     outcomes = sim["match_outcomes"]
     remaining = sim["remaining"]
     teams = sim["teams"]
@@ -311,25 +360,61 @@ def match_importance(sim: dict) -> dict[str, list[dict]]:
 
     n_matches = len(remaining)
     n_teams = len(teams)
+    counts = np.zeros((3, n_matches), dtype=np.int64)
+    sum_rank = np.zeros((3, n_matches, n_teams), dtype=np.float64)
+    sum_top8 = np.zeros((3, n_matches, n_teams), dtype=np.float64)
+    sum_top24 = np.zeros((3, n_matches, n_teams), dtype=np.float64)
+
+    chunk_size = 100_000
+    for start in range(0, n_sims, chunk_size):
+        end = min(start + chunk_size, n_sims)
+        r_blk = ranks[start:end]
+        o_blk = outcomes[start:end]
+        r_f = r_blk.astype(np.float32)
+        t8_f = (r_blk <= 8).astype(np.float32)
+        t24_f = (r_blk <= 24).astype(np.float32)
+        for o in (0, 1, 2):
+            m_f = (o_blk == o).astype(np.float32)
+            counts[o] += m_f.sum(axis=0, dtype=np.int64)
+            sum_rank[o] += (m_f.T @ r_f).astype(np.float64)
+            sum_top8[o] += (m_f.T @ t8_f).astype(np.float64)
+            sum_top24[o] += (m_f.T @ t24_f).astype(np.float64)
+
     imp_score = np.zeros((n_matches, n_teams), dtype=float)
     imp_best_rank = np.zeros((n_matches, n_teams), dtype=float)
     imp_worst_rank = np.zeros((n_matches, n_teams), dtype=float)
+    imp_top8 = np.zeros((n_matches, n_teams), dtype=float)
+    imp_top8_min = np.zeros((n_matches, n_teams), dtype=float)
+    imp_top8_max = np.zeros((n_matches, n_teams), dtype=float)
+    imp_top24 = np.zeros((n_matches, n_teams), dtype=float)
+    imp_top24_min = np.zeros((n_matches, n_teams), dtype=float)
+    imp_top24_max = np.zeros((n_matches, n_teams), dtype=float)
 
     for m_idx in range(n_matches):
-        mean_rank_by_o = []
-        for outcome in (0, 1, 2):
-            mask = outcomes[:, m_idx] == outcome
-            if int(mask.sum()) >= min_samples:
-                mean_rank_by_o.append(ranks[mask].mean(axis=0))
-
-        if len(mean_rank_by_o) < 2:
+        valid_o = [o for o in (0, 1, 2) if int(counts[o, m_idx]) >= min_samples]
+        if len(valid_o) < 2:
             continue
 
-        best_r = np.min(mean_rank_by_o, axis=0)
-        worst_r = np.max(mean_rank_by_o, axis=0)
+        mean_r = [sum_rank[o, m_idx] / counts[o, m_idx] for o in valid_o]
+        best_r = np.min(mean_r, axis=0)
+        worst_r = np.max(mean_r, axis=0)
         imp_score[m_idx] = worst_r - best_r
         imp_best_rank[m_idx] = best_r
         imp_worst_rank[m_idx] = worst_r
+
+        mean_8 = [sum_top8[o, m_idx] / counts[o, m_idx] for o in valid_o]
+        min_8 = np.min(mean_8, axis=0)
+        max_8 = np.max(mean_8, axis=0)
+        imp_top8[m_idx] = max_8 - min_8
+        imp_top8_min[m_idx] = min_8
+        imp_top8_max[m_idx] = max_8
+
+        mean_24 = [sum_top24[o, m_idx] / counts[o, m_idx] for o in valid_o]
+        min_24 = np.min(mean_24, axis=0)
+        max_24 = np.max(mean_24, axis=0)
+        imp_top24[m_idx] = max_24 - min_24
+        imp_top24_min[m_idx] = min_24
+        imp_top24_max[m_idx] = max_24
 
     result: dict[str, list[dict]] = {}
     for t_idx, team in enumerate(teams):
@@ -341,6 +426,12 @@ def match_importance(sim: dict) -> dict[str, list[dict]]:
                 importance=float(imp_score[m_idx, t_idx]),
                 best_rank=float(imp_best_rank[m_idx, t_idx]),
                 worst_rank=float(imp_worst_rank[m_idx, t_idx]),
+                top8_importance=float(imp_top8[m_idx, t_idx]),
+                top8_min=float(imp_top8_min[m_idx, t_idx]),
+                top8_max=float(imp_top8_max[m_idx, t_idx]),
+                top24_importance=float(imp_top24[m_idx, t_idx]),
+                top24_min=float(imp_top24_min[m_idx, t_idx]),
+                top24_max=float(imp_top24_max[m_idx, t_idx]),
             )
             for m_idx, (home, away) in enumerate(remaining)
         ]

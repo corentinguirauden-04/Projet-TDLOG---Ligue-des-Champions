@@ -382,47 +382,106 @@ def position_points_card(position: int, sim, path, n_sims=None, pts_by_rank=None
     plt.close(fig)
 
 
-def team_important_matches_card(team, sim, table, path, n_sims=None, importance=None):
-    """Enregistre le Top 10 des matchs restants les plus décisifs pour une équipe."""
+def team_important_matches_card(
+    team,
+    sim,
+    table,
+    path,
+    n_sims=None,
+    importance=None,
+    metric: str = "rank",
+):
+    """Enregistre le Top 10 des matchs restants les plus décisifs pour une équipe.
+
+    Paramètre `metric` :
+      - `"rank"`  : écart de classement final moyen (en places) — défaut.
+      - `"top8"`  : écart de probabilité de finir Top 8 (en points de %).
+      - `"top24"` : écart de probabilité de finir Top 24 (en points de %).
+    """
     if importance is None:
         importance = s.match_importance(sim)
 
-    top_matches = importance[team][:10]
     cur = next(r for r in table if r["team"] == team)
     n_sims = n_sims or sim["ranks"].shape[0]
+    entries = list(importance[team])
 
-    ordered = list(reversed(top_matches))
+    if metric == "top8":
+        entries.sort(key=lambda item: (-item["top8_importance"], not item["is_own"]))
+        top_matches = entries[:10]
+        ordered = list(reversed(top_matches))
+        vals = [100.0 * m["top8_importance"] for m in ordered]
+        title = f"{team.upper()} — MATCHS CLÉS (TOP 8)"
+        subtitle_prefix = "Top 10 par impact sur les chances de Top 8"
+        footnote = "Plus grand écart de probabilité de terminer dans le Top 8 (en points de %) entre les 3 issues possibles du match (1 / N / 2)."
+        empty_note = "Probabilité de Top 8 quasiment figée (< 0.1 % d'écart sur tous les matchs restants)."
+    elif metric == "top24":
+        entries.sort(key=lambda item: (-item["top24_importance"], not item["is_own"]))
+        top_matches = entries[:10]
+        ordered = list(reversed(top_matches))
+        vals = [100.0 * m["top24_importance"] for m in ordered]
+        title = f"{team.upper()} — MATCHS CLÉS (TOP 24)"
+        subtitle_prefix = "Top 10 par impact sur les chances de Top 24"
+        footnote = "Plus grand écart de probabilité de terminer dans le Top 24 (en points de %) entre les 3 issues possibles du match (1 / N / 2)."
+        empty_note = "Probabilité de Top 24 quasiment figée (< 0.1 % d'écart sur tous les matchs restants)."
+    else:
+        entries.sort(key=lambda item: (-item["importance"], not item["is_own"]))
+        top_matches = entries[:10]
+        ordered = list(reversed(top_matches))
+        vals = [m["importance"] for m in ordered]
+        title = f"{team.upper()} — MATCHS CLÉS"
+        subtitle_prefix = "Top 10 des matchs décisifs (classement)"
+        footnote = "Plus grand écart de classement final moyen (en places) entre les 3 issues possibles du match (1 / N / 2)."
+        empty_note = "Aucun match restant n'a d'impact mesurable sur le classement."
+
     labels = [f"{m['home']} - {m['away']}" for m in ordered]
-    vals = [m["importance"] for m in ordered]
     cols = [C_TOP8 if m["is_own"] else C_PLAY for m in ordered]
 
     fig = _new_fig((12, 6.75))
     ax = fig.add_axes([0.27, 0.14, 0.42, 0.63], facecolor="none")
     y = np.arange(len(labels))
-    ax.barh(y, vals, color=cols, height=0.62, zorder=3)
 
-    x_max = max(max(vals, default=1.0) * 1.08, 1.0)
-    for yi, m, v in zip(y, ordered, vals):
-        unit = "place" if round(v, 1) <= 1.0 else "places"
-        txt = f"{v:.1f} {unit} (rang moyen : {m['worst_rank']:.1f}e → {m['best_rank']:.1f}e)"
-        ax.text(v + x_max * 0.025, yi, txt, va="center", fontsize=9, color=TXT, fontweight="bold")
+    if max(vals, default=0.0) < 0.05:
+        ax.axis("off")
+        fig.text(
+            0.50,
+            0.46,
+            empty_note,
+            ha="center",
+            va="center",
+            fontsize=12.5,
+            fontweight="bold",
+            color=MUTED,
+            bbox=dict(facecolor=PANEL, edgecolor=MUTED, alpha=0.85, pad=12),
+        )
+    else:
+        ax.barh(y, vals, color=cols, height=0.62, zorder=3)
+        x_max = max(max(vals, default=1.0) * 1.08, 1.0)
+        for yi, m, v in zip(y, ordered, vals):
+            if metric == "top8":
+                txt = f"+{v:.1f} pts ({pct(m['top8_min'])} → {pct(m['top8_max'])})"
+            elif metric == "top24":
+                txt = f"+{v:.1f} pts ({pct(m['top24_min'])} → {pct(m['top24_max'])})"
+            else:
+                unit = "place" if round(v, 1) <= 1.0 else "places"
+                txt = f"{v:.1f} {unit} (rang moyen : {m['worst_rank']:.1f}e → {m['best_rank']:.1f}e)"
+            ax.text(v + x_max * 0.025, yi, txt, va="center", fontsize=9, color=TXT, fontweight="bold")
 
-    ax.set_xlim(0, x_max)
-    ax.set_ylim(-0.6, len(labels) - 0.4)
-    ax.set_yticks(y)
-    ax.set_yticklabels(labels, fontsize=10.5, color=TXT)
-    ax.set_xticks([])
-    for sp in ax.spines.values():
-        sp.set_visible(False)
-    ax.tick_params(length=0)
+        ax.set_xlim(0, x_max)
+        ax.set_ylim(-0.6, len(labels) - 0.4)
+        ax.set_yticks(y)
+        ax.set_yticklabels(labels, fontsize=10.5, color=TXT)
+        ax.set_xticks([])
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+        ax.tick_params(length=0)
 
-    fig.text(0.07, 0.92, f"{team.upper()} — MATCHS CLÉS", fontsize=26, fontweight="bold", color=TXT, va="center")
+    fig.text(0.07, 0.92, title, fontsize=25, fontweight="bold", color=TXT, va="center")
     fig.text(
         0.07,
         0.86,
-        f"Top 10 des matchs décisifs  ·  Actuel : {cur['rank']}e ({cur['pts']} pts)  ·  "
+        f"{subtitle_prefix}  ·  Actuel : {cur['rank']}e ({cur['pts']} pts)  ·  "
         f"{_matchday_date_label(sim).capitalize()}",
-        fontsize=11.5,
+        fontsize=11.2,
         color=MUTED,
         va="center",
     )
@@ -432,23 +491,16 @@ def team_important_matches_card(team, sim, table, path, n_sims=None, importance=
         fig.patches.append(Rectangle((x, 0.795), 0.014, 0.016, transform=fig.transFigure, facecolor=col))
         fig.text(x + 0.02, 0.803, lab, fontsize=10, color=TXT, va="center")
 
-    fig.text(
-        0.07,
-        0.055,
-        "Plus grand écart de classement final moyen (en places) entre les 3 issues possibles du match (1 / N / 2).",
-        fontsize=9,
-        color=MUTED,
-        va="center",
-    )
+    fig.text(0.07, 0.055, footnote, fontsize=8.8, color=MUTED, va="center")
     _draw_footer(fig, n_sims)
     fig.savefig(path, dpi=130, facecolor=BG)
     plt.close(fig)
 
 
 def overview(sim, table, path, qualifications=None):
-    """Vue d'ensemble : les 36 équipes en barres empilées Top 8 / barrages / éliminé."""
+    """Vue d'ensemble : les 36 équipes triées par probabilité Top 8 décroissante."""
     q = qualifications if qualifications is not None else s.qualification_probs(sim)
-    order = sorted(s.TEAMS, key=lambda t: (-(q[t]["top8"] * 2 + q[t]["playoff"]), -q[t]["exp_pts"]))
+    order = sorted(s.TEAMS, key=lambda t: (-q[t]["top8"], -q[t]["exp_pts"]))
     cur = {r["team"]: r for r in table}
 
     fig = _new_fig((12, 13))
@@ -489,6 +541,53 @@ def overview(sim, table, path, qualifications=None):
     plt.close(fig)
 
 
+def _draw_qualification_by_points_bars(
+    fig,
+    by_pts: dict[str, np.ndarray],
+    x_points: np.ndarray,
+    xlabel: str,
+) -> None:
+    """Trace le graphe empilé à 100 % (Éliminé / Barrages / Top 8) selon le total de points.
+
+    Helper partagé (DRY) par `points_thresholds_card` et `team_points_thresholds_card`.
+    """
+    p_top8 = 100.0 * by_pts["top8"][x_points]
+    p_play = 100.0 * by_pts["playoff"][x_points]
+    p_out = 100.0 * by_pts["out"][x_points]
+
+    ax = fig.add_axes([0.07, 0.14, 0.88, 0.45], facecolor="none")
+    bar_w = 0.76
+    ax.bar(x_points, p_top8, width=bar_w, color=C_TOP8, edgecolor=BG, linewidth=0.8, zorder=3)
+    ax.bar(x_points, p_play, bottom=p_top8, width=bar_w, color=C_PLAY, edgecolor=BG, linewidth=0.8, zorder=3)
+    ax.bar(x_points, p_out, bottom=p_top8 + p_play, width=bar_w, color=C_OUT, edgecolor=BG, linewidth=0.8, zorder=3)
+
+    for xi, a, b, c in zip(x_points, p_top8, p_play, p_out):
+        for val, bottom, text_col in ((a, 0.0, INK), (b, a, INK), (c, a + b, TXT)):
+            if 4.0 <= val <= 98.5:
+                fs = 7.5 if val < 6.5 else 8.5
+                ax.text(xi, bottom + val / 2.0, f"{val:.1f}", ha="center", va="center",
+                        fontsize=fs, fontweight="bold", color=text_col, zorder=4)
+
+    ax.set_xlim(int(x_points[0]) - 0.65, int(x_points[-1]) + 0.65)
+    ax.set_ylim(0, 100)
+    ax.set_xticks(x_points)
+    y_ticks = np.arange(0, 101, 20)
+    ax.set_yticks(y_ticks)
+    ax.set_yticklabels([f"{v:.0f} %" for v in y_ticks], fontsize=8.5)
+    _style_bar_axes(ax)
+    ax.set_xlabel(xlabel, fontsize=10, labelpad=8)
+    ax.set_ylabel("Probabilité (%)", fontsize=10, labelpad=8)
+
+    for k, (label, col) in enumerate([
+        ("Éliminé (25e-36e)", C_OUT),
+        ("Barrages (9e-24e)", C_PLAY),
+        ("Qualification directe (Top 8)", C_TOP8),
+    ]):
+        lx = 0.07 + k * 0.28
+        fig.patches.append(Rectangle((lx, 0.622), 0.012, 0.014, transform=fig.transFigure, facecolor=col))
+        fig.text(lx + 0.018, 0.629, label, fontsize=9.5, color=TXT, va="center")
+
+
 def points_thresholds_card(sim, path, n_sims=None, pts_by_rank=None):
     """Graphe global empilé à 100 % : issue finale (Top 8 / Barrages / Éliminé) selon le total de points."""
     n_sims = n_sims or sim["ranks"].shape[0]
@@ -511,34 +610,8 @@ def points_thresholds_card(sim, path, n_sims=None, pts_by_rank=None):
         p_min, p_max = 6, 19
     x = np.arange(p_min, p_max + 1)
 
-    p_top8 = 100.0 * by_pts["top8"][p_min:p_max + 1]
-    p_play = 100.0 * by_pts["playoff"][p_min:p_max + 1]
-    p_out = 100.0 * by_pts["out"][p_min:p_max + 1]
-
     fig = _new_fig((12, 6.75))
-    ax = fig.add_axes([0.07, 0.14, 0.88, 0.45], facecolor="none")
-
-    bar_w = 0.76
-    ax.bar(x, p_top8, width=bar_w, color=C_TOP8, edgecolor=BG, linewidth=0.8, zorder=3)
-    ax.bar(x, p_play, bottom=p_top8, width=bar_w, color=C_PLAY, edgecolor=BG, linewidth=0.8, zorder=3)
-    ax.bar(x, p_out, bottom=p_top8 + p_play, width=bar_w, color=C_OUT, edgecolor=BG, linewidth=0.8, zorder=3)
-
-    for xi, a, b, c in zip(x, p_top8, p_play, p_out):
-        for val, bottom, text_col in ((a, 0.0, INK), (b, a, INK), (c, a + b, TXT)):
-            if 4.0 <= val <= 98.5:
-                fs = 7.5 if val < 6.5 else 8.5
-                ax.text(xi, bottom + val / 2.0, f"{val:.1f}", ha="center", va="center",
-                        fontsize=fs, fontweight="bold", color=text_col, zorder=4)
-
-    ax.set_xlim(p_min - 0.65, p_max + 0.65)
-    ax.set_ylim(0, 100)
-    ax.set_xticks(x)
-    y_ticks = np.arange(0, 101, 20)
-    ax.set_yticks(y_ticks)
-    ax.set_yticklabels([f"{v:.0f} %" for v in y_ticks], fontsize=8.5)
-    _style_bar_axes(ax)
-    ax.set_xlabel("Nombre de points en fin de phase de ligue", fontsize=10, labelpad=8)
-    ax.set_ylabel("Probabilité (%)", fontsize=10, labelpad=8)
+    _draw_qualification_by_points_bars(fig, by_pts, x, "Nombre de points en fin de phase de ligue")
 
     fig.text(0.07, 0.92, "SEUILS DE QUALIFICATION — PROBABILITÉ PAR POINTS", fontsize=24, fontweight="bold", color=TXT, va="center")
     fig.text(
@@ -551,12 +624,13 @@ def points_thresholds_card(sim, path, n_sims=None, pts_by_rank=None):
     )
 
     # Alignement gauche -> droite sur les paliers croissants de l'axe des abscisses :
-    # Top 24 (~9 pts, gauche) | Top 16 (~12 pts, centre) | Top 8 (~16 pts, droite).
+    # couleurs neutres froides (distinctes de rose/jaune/vert) pour éviter toute confusion
+    # avec la légende des 3 zones d'issue finale (Éliminé / Barrages / Top 8).
     kpis = []
     for pos, label, col in (
-        (24, "TOP 24 (24E PLACE)", C_OUT),
-        (16, "TOP 16 (16E PLACE)", C_PLAY),
-        (8, "TOP 8 (8E PLACE)", C_TOP8),
+        (24, "SEUIL TOP 24 (24E PLACE)", C_NEUTRAL),
+        (16, "SEUIL TOP 16 (16E PLACE)", "#b6c7ff"),
+        (8, "SEUIL TOP 8 (8E PLACE)", "#eef2ff"),
     ):
         dist = thresholds[pos]
         mean_p = float(np.sum(pts_axis * dist))
@@ -565,15 +639,82 @@ def points_thresholds_card(sim, path, n_sims=None, pts_by_rank=None):
         kpis.append((label, f"Écart-type : {std_p:.1f} · Mode : {mode_p} pts", f"{mean_p:.1f} pts", col))
     _draw_kpi_boxes(fig, kpis)
 
-    for k, (label, col) in enumerate([
-        ("Éliminé (25e-36e)", C_OUT),
-        ("Barrages (9e-24e)", C_PLAY),
-        ("Qualification directe (Top 8)", C_TOP8),
-    ]):
-        lx = 0.07 + k * 0.28
-        fig.patches.append(Rectangle((lx, 0.622), 0.012, 0.014, transform=fig.transFigure, facecolor=col))
-        fig.text(lx + 0.018, 0.629, label, fontsize=9.5, color=TXT, va="center")
+    _draw_footer(fig, n_sims)
+    fig.savefig(path, dpi=130, facecolor=BG)
+    plt.close(fig)
 
+
+def team_points_thresholds_card(team, sim, table, path, n_sims=None, qualifications=None):
+    """Graphe empilé à 100 % propre à une équipe : issue finale selon son total de points."""
+    if qualifications is None:
+        qualifications = s.qualification_probs(sim)
+
+    n_sims = n_sims or sim["ranks"].shape[0]
+    cur = next(r for r in table if r["team"] == team)
+    max_possible = cur["pts"] + 3 * sum(1 for h, a in sim["remaining"] if team in (h, a))
+    by_pts = s.team_qualification_by_points(sim, team)
+
+    # Évite d'afficher des barres bruitées sur des totaux de points quasi impossibles (< 0.03 %).
+    min_occ = max(15, int(0.0003 * n_sims)) if n_sims >= 1000 else 1
+    valid_idx = np.where(by_pts["total"] >= min_occ)[0]
+    if len(valid_idx) == 0:
+        valid_idx = np.where(by_pts["total"] > 0)[0]
+    if len(valid_idx) == 0:
+        valid_idx = np.array([cur["pts"]], dtype=int)
+
+    # Garde uniquement les totaux de points effectivement atteignables (au moins 1 occurrence valide).
+    x = valid_idx
+    p_top24_vec = by_pts["top8"] + by_pts["playoff"]
+
+    def _threshold_kpi(probs_vec: np.ndarray, title: str, col: str) -> tuple[str, str, str, str]:
+        if cur["pts"] in x and probs_vec[cur["pts"]] >= 0.995:
+            return (title, f"Avec {cur['pts']} pts : {pct(probs_vec[cur['pts']])}", "Déjà acquis", col)
+        hitting = [int(p) for p in x if probs_vec[p] >= 0.5]
+        if hitting:
+            p_req = hitting[0]
+            return (title, f"Chances à {p_req} pts : {pct(probs_vec[p_req])}", f"≥ {p_req} pts", col)
+        best_p = int(x[np.argmax(probs_vec[x])])
+        if probs_vec[best_p] < 0.001:
+            return (title, f"Max atteignable : {max_possible} pts", "Hors portée", col)
+        return (title, f"Max à {best_p} pts : {pct(probs_vec[best_p])}", f"> {best_p} pts", col)
+
+    fig = _new_fig((12, 6.75))
+    _draw_qualification_by_points_bars(
+        fig,
+        by_pts,
+        x,
+        f"Nombre de points final de {team} (totaux atteignables)",
+    )
+
+    fig.text(0.07, 0.92, f"{team.upper()} — SEUILS DE POINTS", fontsize=26, fontweight="bold", color=TXT, va="center")
+    fig.text(
+        0.07,
+        0.855,
+        f"Classement actuel : {cur['rank']}e  ·  {cur['pts']} pts  ·  diff {cur['gd']:+d}  ·  "
+        f"{_matchday_date_label(sim).capitalize()}",
+        fontsize=11.5,
+        color=MUTED,
+        va="center",
+    )
+
+    kpis = [
+        ("POINTS ACTUELS", f"Diff. {cur['gd']:+d} · Max : {max_possible} pts", f"{cur['pts']} pts", C_NEUTRAL),
+        _threshold_kpi(p_top24_vec, "SEUIL TOP 24 (≥ 50 %)", "#b6c7ff"),
+        _threshold_kpi(by_pts["top8"], "SEUIL TOP 8 (≥ 50 %)", "#eef2ff"),
+    ]
+    _draw_kpi_boxes(fig, kpis)
+
+    team_pts = sim["pts"][:, s.IDX[team]]
+    q = qualifications[team]
+    fig.text(
+        0.07,
+        0.055,
+        f"Points moyens attendus : {q['exp_pts']:.1f} (écart-type : {float(np.std(team_pts)):.1f})  ·  "
+        f"Top 24 : {pct(q['top24'])}  ·  Top 8 : {pct(q['top8'])}",
+        fontsize=8.8,
+        color=MUTED,
+        va="center",
+    )
     _draw_footer(fig, n_sims)
     fig.savefig(path, dpi=130, facecolor=BG)
     plt.close(fig)

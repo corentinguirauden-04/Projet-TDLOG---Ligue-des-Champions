@@ -48,9 +48,9 @@
         <label class="control-label" for="n-sims">Scénarios simulés :</label>
         <select id="n-sims">
           <option value="20000">20 000 (Rapide)</option>
-          <option value="100000" selected>100 000 (Standard)</option>
+          <option value="100000">100 000 (Équilibré)</option>
           <option value="250000">250 000 (Précis)</option>
-          <option value="500000">500 000 (Très précis)</option>
+          <option value="500000" selected>500 000 (Standard)</option>
           <option value="1000000">1 000 000 (Ultra précis)</option>
         </select>
         <button id="run-sim-btn" class="btn-action" type="button">Recalculer les projections</button>
@@ -138,13 +138,23 @@
           <div class="chart-stage">
             <div class="chart-subtabs">
               <div class="pill-group" id="club-chart-tabs">
-                <button class="pill-btn active" data-chart="classement" type="button">1. Classement final projeté</button>
-                <button class="pill-btn" data-chart="points" type="button">2. Nombre de points attendus</button>
-                <button class="pill-btn" data-chart="matchs_cles" type="button">3. Les 10 matchs décisifs</button>
-                <button class="pill-btn" data-chart="calendrier" type="button">4. Calendrier à venir</button>
-                <button class="pill-btn" data-chart="all" type="button">Voir les 3 graphiques</button>
+                <button class="pill-btn active" data-chart="classement" type="button">1. Classement</button>
+                <button class="pill-btn" data-chart="points" type="button">2. Points</button>
+                <button class="pill-btn" data-chart="seuils_points" type="button">3. Seuils de points</button>
+                <button class="pill-btn" data-chart="matchs_cles" type="button">4. Matchs décisifs</button>
+                <button class="pill-btn" data-chart="calendrier" type="button">5. Calendrier à venir</button>
+                <button class="pill-btn" data-chart="all" type="button">Vue complète</button>
               </div>
               <span class="brand-sub" id="club-zoom-hint">Astuce : cliquez sur un graphique pour l'agrandir</span>
+            </div>
+
+            <div id="club-key-metric-bar" class="key-metric-bar" style="display: none;">
+              <span class="control-label">Indicateur matchs décisifs :</span>
+              <div class="pill-group" id="club-key-metric-tabs">
+                <button class="pill-btn active" data-key-metric="rank" type="button">Écart de classement (places)</button>
+                <button class="pill-btn" data-key-metric="top8" type="button">Impact Top 8 (%)</button>
+                <button class="pill-btn" data-key-metric="top24" type="button">Impact Top 24 (%)</button>
+              </div>
             </div>
 
             <div id="club-chart-caption" class="chart-caption"></div>

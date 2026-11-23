@@ -19,6 +19,7 @@ const state = {
   duelA: "PSG",
   duelB: "Bayern",
   activeChart: "classement",
+  activeKeyMetric: "rank",
   tableFilter: "all",
   sortKey: "exp_pts",
   sortDesc: true,
@@ -33,9 +34,12 @@ const frenchClubs = new Set(["PSG", "Lille", "Lens"]);
 const chartDescriptions = {
   classement: "Probabilité pour le club de terminer à chacune des 36 places finales, de la 36e place à gauche jusqu'à la 1re place à droite (rose : élimination, jaune : barrages, vert : Top 8 direct).",
   points: "Distribution du total de points en fin de phase de ligue. Le trait pointillé vert indique la moyenne attendue et les barres jaunes représentent la plage probable (80 % des scénarios).",
-  matchs_cles: "Les 10 rencontres à venir (parmi tous les matchs de la compétition) qui créent le plus grand écart de classement final moyen pour le club selon leur issue (1 / N / 2).",
+  seuils_points: "Pour chaque total de points atteignable par ce club (en tenant compte de sa différence de buts actuelle), probabilité de finir directement en Top 8 (vert), en barrages (jaune) ou éliminé (rose).",
+  matchs_cles: "Les 10 rencontres à venir qui créent le plus grand écart de classement final moyen (en places) pour le club selon leur issue (1 / N / 2).",
+  matchs_cles_top8: "Les 10 rencontres à venir qui font le plus varier la probabilité du club de terminer dans le Top 8 (qualification directe) selon leur issue (1 / N / 2).",
+  matchs_cles_top24: "Les 10 rencontres à venir qui font le plus varier la probabilité du club de terminer dans le Top 24 (qualification en barrages ou mieux) selon leur issue (1 / N / 2).",
   calendrier: "Affiches restantes du club avec les probabilités (Domicile / Nul / Extérieur) et l'écart de classement final moyen en jeu pour chacune des deux équipes.",
-  all: "Vue complète réunissant les trois graphiques du club côte à côte.",
+  all: "Vue complète réunissant les 4 graphiques analytiques du club (classement, points, seuils de points et matchs décisifs selon l'indicateur choisi).",
 };
 
 function pct(val) {
@@ -368,9 +372,18 @@ function renderClubExplorer() {
 
   const captionEl = document.getElementById("club-chart-caption");
   const zoomHint = document.getElementById("club-zoom-hint");
+  const metricBar = document.getElementById("club-key-metric-bar");
   const base = `/outputs/${state.outputFolder}/equipes/${club.slug}`;
   const q = `?t=${state.cacheBust}`;
   const display = document.getElementById("club-chart-display");
+
+  const keyMetricFile = state.activeKeyMetric === "top8"
+    ? "matchs_cles_top8"
+    : (state.activeKeyMetric === "top24" ? "matchs_cles_top24" : "matchs_cles");
+
+  if (metricBar) {
+    metricBar.style.display = (state.activeChart === "matchs_cles" || state.activeChart === "all") ? "flex" : "none";
+  }
 
   if (state.activeChart === "calendrier") {
     if (zoomHint) zoomHint.style.display = "none";
@@ -379,19 +392,21 @@ function renderClubExplorer() {
     if (zoomHint) zoomHint.style.display = "";
     captionEl.textContent = chartDescriptions.all;
     display.innerHTML = `
-      <div class="triple-chart-grid">
+      <div class="quad-chart-grid">
         <img src="${base}/classement.png${q}" alt="Classement ${club.team}" onclick="openLightbox(this.src)">
         <img src="${base}/points.png${q}" alt="Points ${club.team}" onclick="openLightbox(this.src)">
-        <img src="${base}/matchs_cles.png${q}" alt="Matchs clés ${club.team}" onclick="openLightbox(this.src)">
+        <img src="${base}/seuils_points.png${q}" alt="Seuils de points ${club.team}" onclick="openLightbox(this.src)">
+        <img src="${base}/${keyMetricFile}.png${q}" alt="Matchs clés ${club.team}" onclick="openLightbox(this.src)">
       </div>
     `;
   } else {
     if (zoomHint) zoomHint.style.display = "";
-    captionEl.textContent = chartDescriptions[state.activeChart];
-    const src = `${base}/${state.activeChart}.png${q}`;
+    const fileKey = state.activeChart === "matchs_cles" ? keyMetricFile : state.activeChart;
+    captionEl.textContent = chartDescriptions[fileKey] || chartDescriptions[state.activeChart];
+    const src = `${base}/${fileKey}.png${q}`;
     display.innerHTML = `
       <div class="single-chart-wrap">
-        <img src="${src}" alt="${state.activeChart} ${club.team}" onclick="openLightbox(this.src)">
+        <img src="${src}" alt="${fileKey} ${club.team}" onclick="openLightbox(this.src)">
       </div>
     `;
   }
@@ -932,7 +947,7 @@ document.getElementById("reset-default-elo-btn").onclick = async () => {
 async function triggerSimulation(customElo = null) {
   const btn = document.getElementById("run-sim-btn");
   const saveBtn = document.getElementById("save-manual-elo-btn");
-  const nSims = parseInt(document.getElementById("n-sims").value, 10) || 100000;
+  const nSims = parseInt(document.getElementById("n-sims").value, 10) || 500000;
   btn.disabled = true;
   saveBtn.disabled = true;
   setStatus(`Calcul de ${nSims.toLocaleString("fr-FR")} scénarios en cours...`);
@@ -994,6 +1009,15 @@ document.querySelectorAll("#club-chart-tabs .pill-btn").forEach(btn => {
   btn.onclick = () => {
     state.activeChart = btn.dataset.chart;
     document.querySelectorAll("#club-chart-tabs .pill-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    renderClubExplorer();
+  };
+});
+
+document.querySelectorAll("#club-key-metric-tabs .pill-btn").forEach(btn => {
+  btn.onclick = () => {
+    state.activeKeyMetric = btn.dataset.keyMetric;
+    document.querySelectorAll("#club-key-metric-tabs .pill-btn").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     renderClubExplorer();
   };

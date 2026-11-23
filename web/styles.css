@@ -773,11 +773,26 @@ select:focus, input:focus {
   gap: 16px;
 }
 
-.triple-chart-grid img {
+.quad-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
+  gap: 16px;
+}
+
+.triple-chart-grid img,
+.quad-chart-grid img {
   width: 100%;
   border-radius: 8px;
   display: block;
   cursor: zoom-in;
+}
+
+.key-metric-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
 /* Tableau & Vues globales */

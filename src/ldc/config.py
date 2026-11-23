@@ -28,7 +28,7 @@ SOURCE_LABELS = {
 }
 
 # Paramètres du modèle et des simulations Monte Carlo.
-DEFAULT_N_SIMS = 100_000
+DEFAULT_N_SIMS = 500_000
 MIN_N_SIMS = 100
 MAX_N_SIMS = 1_000_000
 DEFAULT_SEED = 42

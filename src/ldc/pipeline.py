@@ -201,9 +201,21 @@ def run_pipeline(
             team, sim, current_table, per_team_dir / "points.png",
             n_sims=n_sims, qualifications=qualifications,
         )
+        viz.team_points_thresholds_card(
+            team, sim, current_table, per_team_dir / "seuils_points.png",
+            n_sims=n_sims, qualifications=qualifications,
+        )
         viz.team_important_matches_card(
             team, sim, current_table, per_team_dir / "matchs_cles.png",
-            n_sims=n_sims, importance=importance,
+            n_sims=n_sims, importance=importance, metric="rank",
+        )
+        viz.team_important_matches_card(
+            team, sim, current_table, per_team_dir / "matchs_cles_top8.png",
+            n_sims=n_sims, importance=importance, metric="top8",
+        )
+        viz.team_important_matches_card(
+            team, sim, current_table, per_team_dir / "matchs_cles_top24.png",
+            n_sims=n_sims, importance=importance, metric="top24",
         )
         print(f"[{index:02d}/{len(ldc_data.TEAMS)}] Graphiques créés : {team_dir_name}/")
 

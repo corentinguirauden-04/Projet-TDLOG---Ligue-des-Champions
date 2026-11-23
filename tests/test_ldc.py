@@ -129,6 +129,11 @@ class TestSimulationEngine(unittest.TestCase):
         sums = by_pts["top8"][valid] + by_pts["playoff"][valid] + by_pts["out"][valid]
         np.testing.assert_allclose(sums, 1.0, atol=1e-9)
 
+        psg_pts = simulation.team_qualification_by_points(self.sim, "PSG")
+        psg_valid = psg_pts["total"] > 0
+        psg_sums = psg_pts["top8"][psg_valid] + psg_pts["playoff"][psg_valid] + psg_pts["out"][psg_valid]
+        np.testing.assert_allclose(psg_sums, 1.0, atol=1e-9)
+
     def test_match_importance_structure_and_bounds(self) -> None:
         imp = simulation.match_importance(self.sim)
         self.assertEqual(len(imp["PSG"]), len(data.REMAINING))
@@ -137,6 +142,10 @@ class TestSimulationEngine(unittest.TestCase):
         for entry in imp["PSG"]:
             self.assertGreaterEqual(entry["importance"], 0.0)
             self.assertGreaterEqual(entry["worst_rank"], entry["best_rank"])
+            self.assertTrue(0.0 <= entry["top8_importance"] <= 1.0)
+            self.assertTrue(0.0 <= entry["top24_importance"] <= 1.0)
+            self.assertGreaterEqual(entry["top8_max"], entry["top8_min"])
+            self.assertGreaterEqual(entry["top24_max"], entry["top24_min"])
 
 
 class TestVisualization(unittest.TestCase):
@@ -157,7 +166,10 @@ class TestVisualization(unittest.TestCase):
             paths = [
                 tmp_dir / "classement.png",
                 tmp_dir / "points.png",
+                tmp_dir / "seuils_points.png",
                 tmp_dir / "matchs_cles.png",
+                tmp_dir / "matchs_cles_top8.png",
+                tmp_dir / "matchs_cles_top24.png",
                 tmp_dir / "pos_8.png",
                 tmp_dir / "overview.png",
                 tmp_dir / "thresholds.png",
@@ -165,11 +177,14 @@ class TestVisualization(unittest.TestCase):
             ]
             visualization.team_card("PSG", sim, table, paths[0])
             visualization.team_points_card("PSG", sim, table, paths[1])
-            visualization.team_important_matches_card("PSG", sim, table, paths[2])
-            visualization.position_points_card(8, sim, paths[3])
-            visualization.overview(sim, table, paths[4])
-            visualization.points_thresholds_card(sim, paths[5])
-            visualization.objectives_card(sim, {"PSG": 8, "Lens": 24}, paths[6])
+            visualization.team_points_thresholds_card("PSG", sim, table, paths[2])
+            visualization.team_important_matches_card("PSG", sim, table, paths[3], metric="rank")
+            visualization.team_important_matches_card("PSG", sim, table, paths[4], metric="top8")
+            visualization.team_important_matches_card("PSG", sim, table, paths[5], metric="top24")
+            visualization.position_points_card(8, sim, paths[6])
+            visualization.overview(sim, table, paths[7])
+            visualization.points_thresholds_card(sim, paths[8])
+            visualization.objectives_card(sim, {"PSG": 8, "Lens": 24}, paths[9])
             for path in paths:
                 self.assertTrue(path.is_file() and path.stat().st_size > 1000, f"Image invalide : {path}")
 
