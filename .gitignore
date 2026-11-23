@@ -1,1 +1,32 @@
-__pycache__\
+# Python : bytecode, caches et builds
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environnements virtuels Python
+.venv/
+venv/
+env/
+ENV/
+
+# Fichiers temporaires et ressources annexes de pages sauvegardées
+*.tmp
+*_files/
+clubelo_debug*.html
+
+# Éditeurs / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Fichiers système (Windows / macOS)
+Thumbs.db
+desktop.ini
+.DS_Store
