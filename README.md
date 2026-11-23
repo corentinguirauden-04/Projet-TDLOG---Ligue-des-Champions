@@ -5,7 +5,7 @@ Application Python + interface web interactive permettant d'estimer les probabil
 Le projet combine :
 - les résultats réels et le calendrier officiel de la phase de ligue (144 matchs, 8 journées) ;
 - trois sources de notes Elo (**ClubElo** automatisé, **beyondELO** via API, **Personnalisé** manuel) ;
-- un moteur Monte Carlo vectorisé NumPy (loi de Poisson + mise à jour dynamique des Elo) ;
+- un moteur Monte Carlo vectorisé NumPy (loi de Poisson avec Elo fixe tout au long de chaque simulation) ;
 - une génération complète de visuels Matplotlib (fiches par club, distributions par place, vues globales, CSV) ;
 - une interface web interactive (`web_app.py` / `web/`) sans framework externe.
 
@@ -87,7 +87,7 @@ python main.py --source clubelo --no-refresh      # réutiliser data/clubelo_ran
 ```
 
 Par défaut, **100 000 simulations Monte Carlo** sont exécutées (`seed=42`) et produisent dans `outputs/<source>/` :
-- `equipes/<club>/classement.png` : distribution des 36 places finales (36e à gauche → 1re à droite), probabilités Top 8 / Top 24 / élimination, rang moyen et points moyens (avec écarts-types) ;
+- `equipes/<club>/classement.png` : distribution des 36 places finales (36e à gauche → 1re à droite), encadrés alignés au-dessus de leurs zones (*Élimination* / *Barrages* / *Top 8*), rang moyen et points moyens (avec écarts-types) ;
 - `equipes/<club>/points.png` : distribution des points finaux, moyenne (vert-cyan), écart-type, plage probable 80 % (jaune) et points actuels/max ;
 - `equipes/<club>/matchs_cles.png` : Top 10 des matchs restants les plus décisifs (propres matchs et matchs des concurrents), classés par le plus grand écart de classement moyen (en places) entre les 3 issues (`1` / `N` / `2`) ;
 - `classements/1.png` à `36.png` : distribution du nombre de points du club terminant exactement à la place `x` (moyenne, écart-type, plage 80 %, score le plus fréquent) ;
@@ -160,7 +160,7 @@ Deux polynômes par morceaux (`lam_home(W)` et `lam_away(W)`) convertissent `W` 
 
 | Fonction | Rôle |
 |---|---|
-| `simulate(...)` | Simule `n_sims` fins de phase de ligue (vectorisé NumPy, mise à jour Elo `K_ELO = 20` après chaque match). |
+| `simulate(...)` | Simule `n_sims` fins de phase de ligue (vectorisé NumPy, Elo fixe par défaut tout au long de chaque simulation ; option `update_elo=True` disponible). |
 | `current_table()` | Calcule le classement réel actuel à partir de `PLAYED`. |
 | `rank_distribution(sim)` | Matrice `(36, 36)` de probabilité de chaque place finale par équipe. |
 | `qualification_probs(sim)` | Probabilités Top 8, barrages (9e–24e), Top 24, élimination (25e–36e) et points moyens. |
@@ -172,6 +172,6 @@ Deux polynômes par morceaux (`lam_home(W)` et `lam_away(W)`) convertissent `W` 
 
 ### Limites assumées
 - **Indépendance des buts :** les buts domicile et extérieur suivent deux lois de Poisson indépendantes (pas de correction de Dixon-Coles sur les petits scores).
-- **Mise à jour séquentielle des Elo :** les Elo évoluent match après match dans l'ordre chronologique de `REMAINING` (les matchs simultanés d'une même journée ne sont pas mis à jour par lots).
+- **Elo constant durant la simulation :** conserver l'Elo fixe évite tout biais lié à l'ordre des matchs simultanés d'une même journée, au prix de ne pas modéliser une éventuelle dynamique de forme en cours de fin de phase.
 - **Départage :** points, différence de buts, buts marqués, buts à l'extérieur, victoires, victoires à l'extérieur puis tirage aléatoire (les critères UEFA secondaires comme les points des adversaires ou le fair-play ne sont pas modélisés).
 - **Calendrier manuel :** après chaque nouvelle journée, actualiser `PLAYED` et `REMAINING` dans `src/ldc/data.py` puis vérifier avec `python -m unittest discover -s tests -v`.

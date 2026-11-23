@@ -102,6 +102,10 @@ class TestSimulationEngine(unittest.TestCase):
         np.testing.assert_array_equal(self.sim["ranks"], sim_b["ranks"])
         np.testing.assert_array_equal(self.sim["pts"], sim_b["pts"])
 
+    def test_elo_remains_fixed_by_default(self) -> None:
+        expected = np.array([data.DEFAULT_ELO[t] for t in data.TEAMS], dtype=np.float32)
+        np.testing.assert_array_equal(self.sim["elo"], expected)
+
     def test_rank_distribution_is_doubly_stochastic(self) -> None:
         dist = simulation.rank_distribution(self.sim)
         self.assertEqual(dist.shape, (36, 36))

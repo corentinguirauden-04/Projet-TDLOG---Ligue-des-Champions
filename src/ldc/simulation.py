@@ -1,8 +1,8 @@
 """Moteur de simulation Monte Carlo vectorisé (NumPy) de la phase de ligue LDC.
 
 Ce module est une couche métier pure (aucune écriture disque ni rendu graphique) :
-  - Modèle de match : écart Elo (+ bonus domicile) -> probabilité attendue W ->
-    lambdas de Poisson -> tirages de buts -> mise à jour Elo optionnelle.
+  - Modèle de match : écart Elo fixe (+ bonus domicile) -> probabilité attendue W ->
+    lambdas de Poisson -> tirages de buts.
   - Indicateurs statistiques : distribution des rangs, probabilités Top 8 / barrages /
     élimination, distribution des points par position (1re à 36e), seuils conditionnels
     par total de points, et importance des matchs restants.
@@ -151,10 +151,15 @@ def simulate(
     elo_date: str | None = None,
     played=PLAYED,
     remaining=REMAINING,
-    update_elo: bool = True,
+    update_elo: bool = False,
     k: float = K_ELO,
 ) -> dict:
-    """Simule `n_sims` fins possibles de la phase de ligue (résultats fixes + matchs restants)."""
+    """Simule `n_sims` fins possibles de la phase de ligue (résultats fixes + matchs restants).
+
+    Par défaut (`update_elo=False`), les notes Elo restent fixes tout au long de
+    chaque simulation : l'ordre des matchs restants n'introduit ainsi aucun biais
+    séquentiel entre rencontres d'une même journée.
+    """
     if elo is None:
         elo, loaded_date = load_elo()
         elo_date = elo_date or loaded_date
@@ -166,33 +171,39 @@ def simulate(
         for h, a, hg, ag in played
     ]
 
-    elo_now = np.tile(np.array([elo[t] for t in TEAMS], dtype=float), (n_sims, 1))
+    base_elo = np.array([elo[t] for t in TEAMS], dtype=float)
+    elo_now = np.tile(base_elo, (n_sims, 1)) if update_elo else None
     remaining_list = list(remaining)
     match_outcomes = np.empty((n_sims, len(remaining_list)), dtype=np.int8)
 
     for m_idx, (h, a) in enumerate(remaining_list):
         ih, ia = IDX[h], IDX[a]
-        W = win_exp(elo_now[:, ih] + HOME_BONUS, elo_now[:, ia])
-        hg = rng.poisson(lam_home(W))
-        ag = rng.poisson(lam_away(W))
+        if update_elo and elo_now is not None:
+            W = win_exp(elo_now[:, ih] + HOME_BONUS, elo_now[:, ia])
+            hg = rng.poisson(lam_home(W))
+            ag = rng.poisson(lam_away(W))
+            delta = elo_delta(W, hg, ag, k)
+            elo_now[:, ih] += delta
+            elo_now[:, ia] -= delta
+        else:
+            # Elo constant : W et les lambdas sont scalaires, tirage direct sur n_sims.
+            W = win_exp(base_elo[ih] + HOME_BONUS, base_elo[ia])
+            hg = rng.poisson(float(lam_home(W)), size=n_sims)
+            ag = rng.poisson(float(lam_away(W)), size=n_sims)
 
         # 0 = victoire extérieur, 1 = nul, 2 = victoire domicile.
         match_outcomes[:, m_idx] = np.where(hg > ag, 2, np.where(hg == ag, 1, 0))
         matches.append((ih, ia, hg, ag))
 
-        if update_elo:
-            delta = elo_delta(W, hg, ag, k)
-            elo_now[:, ih] += delta
-            elo_now[:, ia] -= delta
-
     stats = _table_from_matches(matches)
     ranks = _rank(stats, rng)
 
+    final_elo = elo_now.astype(np.float32) if elo_now is not None else base_elo.astype(np.float32)
     return dict(
         ranks=ranks,
         pts=stats["pts"],
         gd=stats["gf"] - stats["ga"],
-        elo=elo_now.astype(np.float32),
+        elo=final_elo,
         elo_date=elo_date,
         teams=TEAMS,
         remaining=remaining_list,

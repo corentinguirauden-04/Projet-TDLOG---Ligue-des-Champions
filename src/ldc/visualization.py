@@ -161,7 +161,14 @@ def _draw_points_histogram(fig, sample_pts: np.ndarray, xlabel: str) -> tuple[np
     ax.axvline(mean_p, color=C_TOP8, linestyle="--", linewidth=2.0, zorder=4)
     for p, v in zip(pts_range, vals):
         if v >= 2.5:
-            ax.text(p, v + 0.6, f"{v:.1f}", ha="center", va="bottom", fontsize=8.5, color=TXT, zorder=5)
+            # Fond discret uniquement si la ligne pointillée verticale coupe l'étiquette.
+            text_kwargs = (
+                dict(bbox=dict(facecolor=BG, edgecolor="none", alpha=0.72, pad=1.0))
+                if abs(p - mean_p) < 0.45
+                else {}
+            )
+            ax.text(p, v + 0.6, f"{v:.1f}", ha="center", va="bottom",
+                    fontsize=8.5, color=TXT, zorder=5, **text_kwargs)
 
     ax.set_xlim(p_min - 0.6, p_max + 0.6)
     y_max = max(float(vals.max()) * 1.25, 10.0)
@@ -251,10 +258,12 @@ def team_card(team, sim, table, path, n_sims=None, rank_dist=None, qualification
         va="center",
     )
 
+    # Alignement gauche -> droite sur les 3 zones du graphe (36e à gauche -> 1re à droite) :
+    # Élimination (25-36) | Barrages (9-24) | Qualification directe (Top 8).
     boxes = [
-        ("QUALIFICATION DIRECTE", "Top 8", pct(q["top8"]), C_TOP8),
-        ("QUALIFICATION", "Top 24", pct(q["top24"]), C_PLAY),
         ("ÉLIMINATION", f"Places 25 à {s.N_TEAMS}", pct(q["out"]), C_OUT),
+        ("BARRAGES", f"Places 9 à {min(s.N_TEAMS, 24)}", pct(q["playoff"]), C_PLAY),
+        ("QUALIFICATION DIRECTE", "Top 8", pct(q["top8"]), C_TOP8),
     ]
     _draw_kpi_boxes(fig, boxes)
 
@@ -266,7 +275,7 @@ def team_card(team, sim, table, path, n_sims=None, rank_dist=None, qualification
         0.055,
         f"Rang moyen : {mean_rank:.1f}e (écart-type : {std_rank:.1f})  ·  "
         f"Points moyens : {q['exp_pts']:.1f} (écart-type : {std_pts:.1f})  ·  "
-        f"Barrages (9-{min(s.N_TEAMS, 24)}) : {pct(q['playoff'])}",
+        f"Qualification Top 24 : {pct(q['top24'])}",
         fontsize=8.8,
         color=MUTED,
         va="center",
@@ -303,17 +312,18 @@ def team_points_card(team, sim, table, path, n_sims=None, qualifications=None):
         va="center",
     )
 
+    # Progression gauche -> droite cohérente avec l'axe des points (actuel -> plage -> moyenne).
     boxes = [
-        ("POINTS MOYENS", f"Écart-type : {std_p:.1f} pts · Max : {max_possible}", f"{mean_p:.1f} pts", C_TOP8),
+        ("POINTS ACTUELS", f"Max : {max_possible} pts", f"{cur['pts']} pts", C_NEUTRAL),
         ("PLAGE PROBABLE (80 % DES SCÉNARIOS)", "", f"{p10:.0f} - {p90:.0f} pts", C_PLAY),
-        ("POINTS ACTUELS", "", f"{cur['pts']} pts", C_NEUTRAL),
+        ("POINTS MOYENS", f"Écart-type : {std_p:.1f} pts", f"{mean_p:.1f} pts", C_TOP8),
     ]
     _draw_kpi_boxes(fig, boxes)
 
     fig.text(
         0.07,
         0.055,
-        f"Top 8 : {pct(q['top8'])}   ·   Top 24 : {pct(q['top24'])}   ·   Élimination : {pct(q['out'])}",
+        f"Élimination : {pct(q['out'])}   ·   Barrages : {pct(q['playoff'])}   ·   Top 8 : {pct(q['top8'])}",
         fontsize=9,
         color=MUTED,
         va="center",
@@ -361,7 +371,7 @@ def position_points_card(position: int, sim, path, n_sims=None, pts_by_rank=None
     boxes = [
         ("POINTS MOYENS", f"Écart-type : {std_p:.1f} pts", f"{mean_p:.1f} pts", C_TOP8),
         ("PLAGE PROBABLE (80 % DES SCÉNARIOS)", "", f"{p10:.0f} - {p90:.0f} pts", C_PLAY),
-        ("SCORE LE PLUS FRÉQUENT", f"Probabilité : {pct(dist[mode_p])}", f"{mode_p} pts", _zone_color(position)),
+        ("SCORE LE PLUS FRÉQUENT", f"Probabilité : {pct(dist[mode_p])}", f"{mode_p} pts", C_NEUTRAL),
     ]
     _draw_kpi_boxes(fig, boxes)
 
@@ -471,7 +481,7 @@ def overview(sim, table, path, qualifications=None):
         fig.patches.append(Rectangle((x, 0.893), 0.012, 0.011, transform=fig.transFigure, facecolor=col))
         fig.text(x + 0.018, 0.8985, lab, fontsize=10, color=TXT, va="center")
     fig.text(0.86, 0.905, "Classement actuel", fontsize=9, color=MUTED, ha="center")
-    fig.text(0.05, 0.02, "Simulation Monte Carlo : Elo mis à jour après chaque match simulé + loi de Poisson.",
+    fig.text(0.05, 0.02, "Simulation Monte Carlo : Elo fixe durant la simulation + loi de Poisson.",
              fontsize=9, color=MUTED)
     fig.savefig(path, dpi=110, facecolor=BG)
     plt.close(fig)
@@ -538,11 +548,13 @@ def points_thresholds_card(sim, path, n_sims=None, pts_by_rank=None):
         va="center",
     )
 
+    # Alignement gauche -> droite sur les paliers croissants de l'axe des abscisses :
+    # Top 24 (~9 pts, gauche) | Top 16 (~12 pts, centre) | Top 8 (~16 pts, droite).
     kpis = []
     for pos, label, col in (
-        (8, "TOP 8 (8E PLACE)", C_TOP8),
-        (16, "TOP 16 (16E PLACE)", C_PLAY),
         (24, "TOP 24 (24E PLACE)", C_OUT),
+        (16, "TOP 16 (16E PLACE)", C_PLAY),
+        (8, "TOP 8 (8E PLACE)", C_TOP8),
     ):
         dist = thresholds[pos]
         mean_p = float(np.sum(pts_axis * dist))
@@ -552,9 +564,9 @@ def points_thresholds_card(sim, path, n_sims=None, pts_by_rank=None):
     _draw_kpi_boxes(fig, kpis)
 
     for k, (label, col) in enumerate([
-        ("Qualification directe (Top 8)", C_TOP8),
-        ("Barrages (9e-24e)", C_PLAY),
         ("Éliminé (25e-36e)", C_OUT),
+        ("Barrages (9e-24e)", C_PLAY),
+        ("Qualification directe (Top 8)", C_TOP8),
     ]):
         lx = 0.07 + k * 0.28
         fig.patches.append(Rectangle((lx, 0.622), 0.012, 0.014, transform=fig.transFigure, facecolor=col))
