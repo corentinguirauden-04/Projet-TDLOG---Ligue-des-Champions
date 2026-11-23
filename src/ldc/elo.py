@@ -1,28 +1,14 @@
-"""Récupère les notes Elo des 36 clubs de la phase de ligue.
+"""Récupération et normalisation des notes Elo des 36 clubs (ClubElo et beyondELO).
 
-Fonctionnement par défaut pour ClubElo (`--source clubelo`, source par défaut) :
-1. Essaie d'abord l'API CSV ClubElo (`api.clubelo.com`).
-2. Si l'API est indisponible (date du jour), bascule automatiquement sur la page
-   HTML live https://clubelo.com/Ranking : télécharge la page à jour, remplace
-   atomiquement `clubelo_ranking.html` après validation, puis extrait les notes
-   depuis ce fichier HTML (et d'éventuels `clubelo_*.html` complémentaires).
-3. En cas d'indisponibilité réseau totale, utilise le fichier `clubelo_ranking.html`
-   déjà présent localement.
-
-Exemples :
-    python ldc_elo.py                       # ClubElo (API puis HTML auto) -> elo.json
-    python ldc_elo.py --source clubelo      # idem
-    python ldc_elo.py --no-download         # relit clubelo_ranking.html local sans appel réseau
-    python ldc_elo.py --source beyondelo    # récupère les Elo via l'API beyondELO
-    python ldc_elo.py clubelo_ranking.html  # lit explicitement un ou plusieurs fichiers HTML
-
-Pour une date historique :
-    python ldc_elo.py --source beyondelo 2026-10-01
-    python ldc_elo.py --source clubelo 2026-09-07
+Pipeline ClubElo (`--source clubelo`, défaut) :
+1. Tente d'abord l'API CSV ClubElo (`api.clubelo.com`).
+2. Si l'API échoue (date du jour), télécharge automatiquement https://clubelo.com/Ranking,
+   valide les données extraites puis remplace atomiquement `data/clubelo_ranking.html`
+   avant de parser le tableau JavaScript `eloData` (~1 750 clubs, 36/36 reconnus).
+3. En cas d'absence de réseau, bascule sur le fichier `data/clubelo_ranking.html` local.
 
 Dépendances : bibliothèque standard Python uniquement.
 """
-
 from __future__ import annotations
 
 import argparse
@@ -35,22 +21,27 @@ import json
 import re
 import sys
 import unicodedata
+import urllib.error
+import urllib.request
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Iterable
-import urllib.error
-import urllib.request
 
-HERE = Path(__file__).resolve().parent
-OUTPUT_FILE = HERE / "elo.json"
-DEFAULT_HTML = HERE / "clubelo_ranking.html"
-CLUBELO_RANKING_URL = "https://clubelo.com/Ranking"
-BEYONDELO_API_KEY = "be_53JJFu4692fXmqaSUFz7ykzKlEOHrRlcDpUP3eZrj-s"
+from ldc.config import (
+    BEYONDELO_API_KEY,
+    CLUBELO_HTML_FILE,
+    CLUBELO_RANKING_URL,
+    DATA_DIR,
+    ELO_FILE,
+    MAX_ELO,
+    MIN_ELO,
+    ROOT_DIR,
+)
+from ldc.data import DEFAULT_ELO, write_elo_json
 
-# Noms du projet -> variantes possibles des noms affichés par ClubElo.
-# La correspondance est stricte après normalisation : pas de rapprochement
-# approximatif, afin d'éviter d'attribuer l'Elo d'un mauvais club.
-CLUBELO_NAMES = {
+# Noms du projet -> variantes possibles des noms affichés par ClubElo / beyondELO.
+# Correspondance stricte après normalisation : évite d'attribuer l'Elo d'un mauvais club.
+CLUBELO_NAMES: dict[str, list[str]] = {
     "AEK": ["AEK", "AEK Athens"],
     "Arsenal": ["Arsenal"],
     "Aston Villa": ["Aston Villa"],
@@ -95,44 +86,37 @@ ELO_KEYS = ("elo", "clubelo", "elorating", "rating")
 
 
 def _norm(value: Any) -> str:
-    """Normalise les noms de clubs et les en-têtes (accents/ponctuation ignorés)."""
-    value = str(value)
-    value = value.translate(str.maketrans({
+    """Normalise un nom de club ou un en-tête (accents, casse et ponctuation ignorés)."""
+    text = str(value).translate(str.maketrans({
         "ø": "o", "Ø": "O", "æ": "ae", "Æ": "AE",
         "œ": "oe", "Œ": "OE", "ł": "l", "Ł": "L", "ß": "ss",
     }))
-    value = unicodedata.normalize("NFKD", value)
-    value = "".join(c for c in value if not unicodedata.combining(c))
-    return "".join(c.lower() for c in value if c.isalnum())
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    return "".join(c.lower() for c in text if c.isalnum())
 
 
 def _to_float(value: Any) -> float | None:
-    """Convertit une valeur Elo en nombre, y compris si elle contient des espaces."""
+    """Convertit une valeur Elo en flottant valide dans [MIN_ELO, MAX_ELO]."""
     if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return float(value)
+        number = float(value)
+        return number if MIN_ELO <= number <= MAX_ELO else None
     text = str(value).strip().replace("\u00a0", "").replace(" ", "")
     if not text:
         return None
-    # Enlève les éventuels séparateurs de milliers. ClubElo utilise généralement
-    # un nombre simple (par exemple 1842.37), mais on tolère aussi 1,842.37.
     if "," in text and "." in text:
         text = text.replace(",", "")
     elif "," in text:
-        # Une virgule suivie de trois chiffres est interprétée comme séparateur
-        # de milliers ; sinon, comme séparateur décimal.
         text = text.replace(",", "") if re.search(r",\d{3}$", text) else text.replace(",", ".")
     try:
         number = float(text)
     except ValueError:
         return None
-    # Plage volontairement large pour éviter de prendre un rang ou une année.
-    if not 500 <= number <= 3000:
-        return None
-    return number
+    return number if MIN_ELO <= number <= MAX_ELO else None
 
 
 class _HTMLCollector(HTMLParser):
-    """Collecte les lignes de tableaux et le contenu des balises script."""
+    """Collecte les lignes de tableaux HTML et le contenu des balises `<script>`."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -186,13 +170,12 @@ class _HTMLCollector(HTMLParser):
             self.title_parts.append(data)
         if self._cell is not None:
             self._cell.append(data)
-        # Texte visible utile pour détecter une page Cloudflare.
         if not self._in_script and data.strip():
             self.page_text.append(data.strip())
 
 
 def _row_from_dict(row: dict[str, Any]) -> tuple[str, float] | None:
-    """Extrait (nom du club, Elo) d'un objet JSON / Vega."""
+    """Extrait `(nom_club, elo)` d'un objet JSON / Vega."""
     values = {_norm(key): value for key, value in row.items()}
     name = next((values[k] for k in NAME_KEYS if k in values), None)
     elo_value = next((values[k] for k in ELO_KEYS if k in values), None)
@@ -200,13 +183,11 @@ def _row_from_dict(row: dict[str, Any]) -> tuple[str, float] | None:
         return None
     elo = _to_float(elo_value)
     name = str(name).strip()
-    if not name or elo is None:
-        return None
-    return name, elo
+    return (name, elo) if name and elo is not None else None
 
 
 def _walk_json(obj: Any) -> Iterable[tuple[str, float]]:
-    """Parcourt récursivement un JSON pour retrouver des enregistrements Club/Elo."""
+    """Parcourt récursivement une structure JSON pour trouver des couples Club/Elo."""
     if isinstance(obj, dict):
         record = _row_from_dict(obj)
         if record:
@@ -219,10 +200,8 @@ def _walk_json(obj: Any) -> Iterable[tuple[str, float]]:
 
 
 def _json_objects_from_script(script: str) -> Iterable[Any]:
-    """Repère les objets JSON embarqués dans les scripts (dont vegaJson)."""
+    """Repère les objets JSON embarqués dans les scripts (dont `vegaJson`)."""
     decoder = json.JSONDecoder()
-    # Les pages Vega utilisent souvent `var vegaJson = {...};` ou des variables
-    # équivalentes. On ajoute aussi les blocs JSON purs (type application/json).
     starts: set[int] = set()
     for match in re.finditer(r"(?:vegaJson|vegaData|vegaSpec|spec|dataset|data)\s*[:=]\s*", script, re.I):
         pos = match.end()
@@ -230,12 +209,9 @@ def _json_objects_from_script(script: str) -> Iterable[Any]:
             pos += 1
         if pos < len(script) and script[pos] in "{[":
             starts.add(pos)
-    # Cas où la spécification Vega est passée directement à vegaEmbed(...).
     for match in re.finditer(r"vegaEmbed\s*\(", script, re.I):
         pos = match.end()
-        brace = script.find("{", pos)
-        bracket = script.find("[", pos)
-        valid = [x for x in (brace, bracket) if x >= 0]
+        valid = [x for x in (script.find("{", pos), script.find("[", pos)) if x >= 0]
         if valid:
             starts.add(min(valid))
     stripped = script.strip()
@@ -255,7 +231,7 @@ def _extract_elo_data_from_script(script: str) -> list[tuple[str, float]]:
 
     Sur https://clubelo.com/Ranking, le classement complet (~1 750 clubs, trié par Elo
     décroissant) est embarqué dans ce tableau JS à guillemets simples puis injecté dans
-    le DOM par `JSSortableEloTable`. Il échappe donc au parseur HTML statique et à JSON.
+    le DOM par `JSSortableEloTable`.
     """
     match = re.search(r"(?:const|let|var)\s+eloData\s*=\s*(\[\[.*?\]\])\s*;", script, re.S)
     if not match:
@@ -282,7 +258,7 @@ def _extract_elo_data_from_script(script: str) -> list[tuple[str, float]]:
         links = re.findall(r"<a\b[^>]*>(.*?)</a>", cell_html, re.S | re.I)
         if not links:
             continue
-        # Le premier <a> contient le drapeau (<img> sans texte), le dernier contient le nom du club.
+        # Le premier <a> contient le drapeau (<img>), le dernier contient le nom du club.
         name = html_lib.unescape(re.sub(r"<[^>]+>", "", links[-1])).strip()
         if name:
             records.append((name, elo))
@@ -302,7 +278,6 @@ def _extract_table_rows(tables: list[list[list[str]]]) -> list[tuple[str, float]
             for data_row in table[header_index + 1:]:
                 if max(name_idx, elo_idx) >= len(data_row):
                     continue
-                # Retire un éventuel rang numérique en préfixe (ex. "117 Viking" dans un DOM sauvegardé).
                 name = re.sub(r"^\d+\s+", "", data_row[name_idx].strip())
                 elo = _to_float(data_row[elo_idx])
                 if name and elo is not None:
@@ -312,27 +287,23 @@ def _extract_table_rows(tables: list[list[list[str]]]) -> list[tuple[str, float]
 
 
 def extract_records_from_html(html: str) -> tuple[list[tuple[str, float]], str]:
-    """Extrait les paires Club/Elo d'une page HTML téléchargée.
+    """Extrait les couples `(club, elo)` d'une page HTML ClubElo et renvoie un diagnostic.
 
-    Gère en priorité le tableau JS `eloData` (classement mondial complet trié par Elo),
-    puis les tableaux HTML et les données JSON/Vega intégrées dans les scripts.
-    Retourne aussi un résumé diagnostique de la page.
+    Priorité : tableau JS `eloData` (trié par Elo décroissant -> évite les collisions
+    d'homonymes), puis tableaux HTML statiques, puis objets JSON/Vega.
     """
     collector = _HTMLCollector()
     collector.feed(html)
     title = " ".join("".join(collector.title_parts).split())
     visible_text = " ".join(collector.page_text).lower()
 
-    # Ne pas confondre une page de vérification Cloudflare avec un classement.
     challenge_markers = (
         "un instant", "just a moment", "checking your browser",
         "cf-chl-", "challenge-platform", "cloudflare",
     )
     if any(marker in title.lower() or marker in visible_text for marker in challenge_markers):
-        # 
         raise ValueError(
-            "Le fichier HTML contient une page de vérification Cloudflare, pas le classement. "
-            "Ouvre ClubElo manuellement, attends la fin du chargement, puis enregistre à nouveau la page."
+            "Le fichier HTML contient une page de vérification Cloudflare, pas le classement."
         )
 
     records: list[tuple[str, float]] = []
@@ -343,37 +314,25 @@ def extract_records_from_html(html: str) -> tuple[list[tuple[str, float]], str]:
         for obj in _json_objects_from_script(script):
             records.extend(_walk_json(obj))
 
-    # Déduplique les mêmes couples (nom, Elo) trouvés à la fois dans un tableau
-    # et dans le JSON qui alimente le graphique.
     unique: dict[tuple[str, float], None] = {}
     for name, elo in records:
         unique[(name, round(float(elo), 3))] = None
-    records = list(unique.keys())
+    deduped = list(unique.keys())
 
     summary = (
         f"titre={title!r}, tableaux HTML={len(collector.tables)}, "
-        f"scripts={len(collector.scripts)}, lignes Club/Elo={len(records)}"
+        f"scripts={len(collector.scripts)}, lignes Club/Elo={len(deduped)}"
     )
-    return records, summary
+    return deduped, summary
 
 
 def match_project_teams(records: Iterable[tuple[str, float]]) -> tuple[dict[str, int], list[str], list[str]]:
-    """Fait correspondre les noms ClubElo avec les 36 noms utilisés dans le projet.
-
-    Retourne :
-      - le dictionnaire {équipe_du_projet: Elo_arrondi} ;
-      - la liste des équipes manquantes ;
-      - la liste des noms ClubElo effectivement reconnus.
-    """
+    """Associe les couples `(club, elo)` aux 36 clubs du projet via `CLUBELO_NAMES`."""
     by_name: dict[str, float] = {}
     for club_name, rating in records:
         key = _norm(club_name)
-        if not key:
-            continue
-        # Si plusieurs pages contiennent le même club, on conserve la première
-        # valeur rencontrée. Les classements nationaux doivent être téléchargés
-        # le même jour pour rester cohérents.
-        by_name.setdefault(key, float(rating))
+        if key:
+            by_name.setdefault(key, float(rating))
 
     elo: dict[str, int] = {}
     missing: list[str] = []
@@ -398,7 +357,7 @@ def match_project_teams(records: Iterable[tuple[str, float]]) -> tuple[dict[str,
 
 
 def _read_html_file(path: Path) -> str:
-    """Lit un fichier HTML avec quelques encodages courants."""
+    """Lit un fichier HTML en essayant plusieurs encodages courants."""
     raw = path.read_bytes()
     for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
         try:
@@ -409,27 +368,23 @@ def _read_html_file(path: Path) -> str:
 
 
 def _find_local_html_files() -> list[Path]:
-    """Trouve la page principale et les éventuelles pages nationales locales."""
+    """Trouve `data/clubelo_ranking.html` et d'éventuelles pages `clubelo_*.html` complémentaires."""
     candidates: list[Path] = []
-    if DEFAULT_HTML.exists():
-        candidates.append(DEFAULT_HTML)
+    if CLUBELO_HTML_FILE.exists():
+        candidates.append(CLUBELO_HTML_FILE)
 
-    # Permet aussi d'agréger plusieurs pages téléchargées, par exemple
-    # clubelo_ENG.html, clubelo_FRA.html, etc. La page de debug est exclue.
-    for path in sorted(HERE.glob("clubelo_*.htm*")):
-        if path == DEFAULT_HTML or "debug" in path.name.lower():
+    for folder in (DATA_DIR, ROOT_DIR):
+        if not folder.is_dir():
             continue
-        if path not in candidates:
+        for path in sorted(folder.glob("clubelo_*.htm*")):
+            if "debug" in path.name.lower() or path in candidates:
+                continue
             candidates.append(path)
     return candidates
 
 
-def _download_clubelo_html(dest: Path = DEFAULT_HTML) -> str:
-    """Télécharge https://clubelo.com/Ranking et remplace atomiquement clubelo_ranking.html.
-
-    Le contenu est validé via extract_records_from_html() avant tout remplacement,
-    afin de ne jamais écraser un fichier local valide par une page d'erreur.
-    """
+def _download_clubelo_html(dest: Path = CLUBELO_HTML_FILE) -> str:
+    """Télécharge https://clubelo.com/Ranking et remplace atomiquement `data/clubelo_ranking.html`."""
     request = urllib.request.Request(
         CLUBELO_RANKING_URL,
         headers={
@@ -445,6 +400,7 @@ def _download_clubelo_html(dest: Path = DEFAULT_HTML) -> str:
     if not records:
         raise ValueError(f"Aucune donnée Club/Elo extraite depuis {CLUBELO_RANKING_URL} ({summary})")
 
+    dest.parent.mkdir(parents=True, exist_ok=True)
     temp_path = dest.with_suffix(".html.tmp")
     temp_path.write_bytes(raw)
     temp_path.replace(dest)
@@ -452,7 +408,7 @@ def _download_clubelo_html(dest: Path = DEFAULT_HTML) -> str:
 
 
 def _fetch_api_clubelo(date: str) -> str:
-    """Essaie l'ancienne API CSV (utile si ClubElo la remet en service)."""
+    """Interroge l'API CSV historique ClubElo."""
     errors = []
     for scheme in ("https", "http"):
         url = f"{scheme}://api.clubelo.com/{date}"
@@ -460,16 +416,17 @@ def _fetch_api_clubelo(date: str) -> str:
         try:
             with urllib.request.urlopen(request, timeout=4) as response:
                 text = response.read().decode("utf-8-sig")
-            if "Club" not in text.splitlines()[0] or "Elo" not in text.splitlines()[0]:
+            first_line = text.splitlines()[0] if text else ""
+            if "Club" not in first_line or "Elo" not in first_line:
                 raise ValueError("La réponse ne ressemble pas au CSV ClubElo attendu")
             return text
-        except Exception as exc:  # noqa: BLE001 - on essaie ensuite l'autre URL / le HTML local
+        except Exception as exc:  # noqa: BLE001 - essaie le schéma suivant puis le HTML
             errors.append(f"{scheme}: {exc}")
     raise RuntimeError("API indisponible : " + " ; ".join(errors))
 
 
 def _fetch_api_beyondelo(date: str) -> str:
-    """Récupère les notes Elo depuis l'API beyondELO et les formate en CSV (Club,Elo)."""
+    """Récupère les notes Elo depuis l'API beyondELO et les normalise au format CSV `(Club, Elo)`."""
     url = f"https://public-api.beyondelo.com/v1/rankings/clubs?date={date}"
     request = urllib.request.Request(
         url,
@@ -496,15 +453,14 @@ def _fetch_api_beyondelo(date: str) -> str:
     writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(["Club", "Elo"])
     for club in clubs:
-        name = club.get("name")
-        elo = club.get("elo")
+        name, elo = club.get("name"), club.get("elo")
         if name is not None and elo is not None:
             writer.writerow([name, elo])
     return buffer.getvalue()
 
 
 def _parse_csv(text: str) -> list[tuple[str, float]]:
-    """Convertit le CSV historique ClubElo en paires (club, Elo)."""
+    """Convertit un CSV `Club,Elo` en liste de couples `(club, elo)`."""
     rows: list[tuple[str, float]] = []
     for row in csv.DictReader(io.StringIO(text)):
         name = row.get("Club") or row.get("club") or row.get("Name")
@@ -514,129 +470,79 @@ def _parse_csv(text: str) -> list[tuple[str, float]]:
     return rows
 
 
-def _write_elo_json(elo: dict[str, int], date: str, source: str = "clubelo") -> None:
-    """Écrit elo.json de façon atomique, sans écraser un ancien fichier si erreur."""
-    payload = {"date": date, "source": source, "elo": elo}
-    temp_path = OUTPUT_FILE.with_suffix(".json.tmp")
-    temp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    temp_path.replace(OUTPUT_FILE)
+def _read_html_sources(paths: list[Path]) -> tuple[list[tuple[str, float]], str]:
+    """Lit et agrège un ou plusieurs fichiers HTML ClubElo locaux."""
+    collected: list[tuple[str, float]] = []
+    print("Lecture des pages HTML ClubElo :")
+    for path in paths:
+        try:
+            html = _read_html_file(path)
+            page_records, summary = extract_records_from_html(html)
+            collected.extend(page_records)
+            print(f"  - {path.name} : {summary}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"  - {path.name} : ERREUR : {exc}")
+    return collected, ", ".join(path.name for path in paths)
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Récupère les notes Elo des 36 clubs de la phase de ligue."
-    )
-    parser.add_argument(
-        "-s",
-        "--source",
-        choices=("clubelo", "beyondelo"),
-        default="clubelo",
-        help="Source à utiliser : clubelo (API avec repli HTML automatique, défaut) ou beyondelo (API).",
-    )
-    parser.add_argument(
-        "--no-download",
-        action="store_true",
-        help="Pour clubelo : n'appelle pas le réseau et réutilise directement clubelo_ranking.html local.",
-    )
-    parser.add_argument(
-        "targets",
-        nargs="*",
-        metavar="AAAA-MM-JJ | fichier.html",
-        help="Date historique (AAAA-MM-JJ) ou fichier(s) HTML ClubElo.",
-    )
-    parsed = parser.parse_args(argv)
-    targets: list[str] = parsed.targets
+def fetch_and_save_elo(
+    source: str = "clubelo",
+    date: str | None = None,
+    no_download: bool = False,
+    html_files: list[Path] | None = None,
+) -> int:
+    """Récupère les notes Elo selon la source choisie et écrit `data/elo.json`."""
     today_iso = dt.date.today().isoformat()
+    requested_date = date or today_iso
 
-    def _read_html_sources(paths: list[Path]) -> tuple[list[tuple[str, float]], str]:
-        collected: list[tuple[str, float]] = []
-        print("Lecture des pages HTML ClubElo :")
-        for path in paths:
-            try:
-                html = _read_html_file(path)
-                page_records, summary = extract_records_from_html(html)
-                collected.extend(page_records)
-                print(f"  - {path.name} : {summary}")
-            except Exception as exc:  # noqa: BLE001 - diagnostic de chaque fichier local
-                print(f"  - {path.name} : ERREUR : {exc}")
-        return collected, ", ".join(path.name for path in paths)
-
-    # Argument(s) HTML explicite(s) : le script lit exactement les fichiers fournis sans appel réseau.
-    html_args = [Path(arg).expanduser() for arg in targets if arg.lower().endswith((".html", ".htm"))]
-    if html_args:
-        if parsed.source == "beyondelo":
-            print("L'option --source beyondelo ne s'utilise pas avec des fichiers HTML.", file=sys.stderr)
-            return 2
-        html_args = [p if p.is_absolute() or p.is_file() else HERE / p for p in html_args]
-        missing_files = [str(p) for p in html_args if not p.is_file()]
-        if missing_files:
-            print("Fichier(s) HTML introuvable(s) : " + ", ".join(missing_files), file=sys.stderr)
+    if html_files:
+        records, origin_label = _read_html_sources(html_files)
+        data_date = today_iso
+    elif source == "clubelo" and no_download:
+        local_files = _find_local_html_files()
+        if not local_files:
+            print("Aucun fichier HTML local trouvé dans data/ (clubelo_ranking.html).", file=sys.stderr)
             return 1
-        records, source = _read_html_sources([p.resolve() for p in html_args])
+        records, origin_label = _read_html_sources(local_files)
         data_date = today_iso
     else:
-        if len(targets) > 1:
-            parser.print_usage(sys.stderr)
-            return 2
-        requested_date = targets[0] if targets else today_iso
+        api_sources = {
+            "clubelo": ("API ClubElo", _fetch_api_clubelo),
+            "beyondelo": ("API beyondELO", _fetch_api_beyondelo),
+        }
+        api_label, fetch_fn = api_sources[source]
         try:
-            dt.date.fromisoformat(requested_date)
-        except ValueError:
-            parser.print_usage(sys.stderr)
-            return 2
-
-        if parsed.source == "clubelo" and parsed.no_download:
-            html_files = _find_local_html_files()
-            if not html_files:
-                print(
-                    "Aucun fichier HTML local trouvé (clubelo_ranking.html ou clubelo_*.html).",
-                    file=sys.stderr,
-                )
-                return 1
-            records, source = _read_html_sources(html_files)
-            data_date = today_iso
-        else:
-            api_sources = {
-                "clubelo": ("API ClubElo", _fetch_api_clubelo),
-                "beyondelo": ("API beyondELO", _fetch_api_beyondelo),
-            }
-            api_label, fetch_fn = api_sources[parsed.source]
-            try:
-                if requested_date == today_iso:
-                    print(f"Tentative de {api_label}...")
-                else:
-                    print(f"Tentative de {api_label} historique du {requested_date}...")
-                csv_text = fetch_fn(requested_date)
-                records = _parse_csv(csv_text)
-                source = api_label
-                data_date = requested_date
-            except Exception as exc:
-                print(f"{api_label} indisponible : {exc}", file=sys.stderr)
-                if parsed.source == "clubelo" and requested_date == today_iso:
-                    # Repli intégré à la pipeline ClubElo : télécharge le HTML à jour puis parse localement.
-                    print(f"Bascule sur le téléchargement HTML automatique ({CLUBELO_RANKING_URL})...")
-                    try:
-                        summary = _download_clubelo_html(DEFAULT_HTML)
-                        print(f"  OK  {DEFAULT_HTML.name} mis à jour ({summary})")
-                    except Exception as dl_exc:  # noqa: BLE001 - repli sur le HTML local existant
-                        print(
-                            f"  Avertissement : téléchargement HTML impossible ({dl_exc}). "
-                            "Utilisation du fichier local existant.",
-                            file=sys.stderr,
-                        )
-                    html_files = _find_local_html_files()
-                    if not html_files:
-                        print(
-                            "Aucun fichier HTML ClubElo disponible (téléchargement échoué et aucun fichier local).",
-                            file=sys.stderr,
-                        )
-                        return 1
-                    records, source = _read_html_sources(html_files)
-                    data_date = today_iso
-                else:
-                    if requested_date != today_iso:
-                        print("Une page HTML actuelle ne peut pas remplacer un classement historique.", file=sys.stderr)
+            if requested_date == today_iso:
+                print(f"Tentative de {api_label}...")
+            else:
+                print(f"Tentative de {api_label} historique du {requested_date}...")
+            csv_text = fetch_fn(requested_date)
+            records = _parse_csv(csv_text)
+            origin_label = api_label
+            data_date = requested_date
+        except Exception as exc:
+            print(f"{api_label} indisponible : {exc}", file=sys.stderr)
+            if source == "clubelo" and requested_date == today_iso:
+                print(f"Bascule sur le téléchargement HTML automatique ({CLUBELO_RANKING_URL})...")
+                try:
+                    summary = _download_clubelo_html(CLUBELO_HTML_FILE)
+                    print(f"  OK  {CLUBELO_HTML_FILE.name} mis à jour ({summary})")
+                except Exception as dl_exc:  # noqa: BLE001
+                    print(
+                        f"  Avertissement : téléchargement HTML impossible ({dl_exc}). "
+                        "Utilisation du fichier local existant.",
+                        file=sys.stderr,
+                    )
+                local_files = _find_local_html_files()
+                if not local_files:
+                    print("Aucun fichier HTML ClubElo disponible.", file=sys.stderr)
                     return 1
+                records, origin_label = _read_html_sources(local_files)
+                data_date = today_iso
+            else:
+                if requested_date != today_iso:
+                    print("Une page HTML actuelle ne peut pas remplacer un classement historique.", file=sys.stderr)
+                return 1
 
     elo, missing, matched = match_project_teams(records)
     print(f"\nÉquipes reconnues : {len(elo)}/{len(CLUBELO_NAMES)}")
@@ -648,19 +554,77 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if missing:
-        import ldc_data
-
-        print("\nÉquipes introuvables (remplacement par DEFAULT_ELO de ldc_data.py) :")
+        print("\nÉquipes introuvables (remplacement par DEFAULT_ELO) :")
         for team in missing:
-            default_val = int(ldc_data.DEFAULT_ELO[team])
+            default_val = int(DEFAULT_ELO[team])
             elo[team] = default_val
             print(f"  DEFAULT  {team} <- {default_val}")
 
-    _write_elo_json(elo, data_date, source=parsed.source)
+    write_elo_json(elo, data_date, source=source, path=ELO_FILE)
     print(f"\nelo.json mis à jour : {len(elo)} équipes, date d'enregistrement {data_date}.")
-    print(f"Source : {source}")
-    print(f"Fichier créé : {OUTPUT_FILE}")
+    print(f"Source : {origin_label}")
+    print(f"Fichier créé : {ELO_FILE}")
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Récupère les notes Elo des 36 clubs de la phase de ligue."
+    )
+    parser.add_argument(
+        "-s",
+        "--source",
+        choices=("clubelo", "beyondelo"),
+        default="clubelo",
+        help="Source : clubelo (API avec repli HTML automatique, défaut) ou beyondelo (API).",
+    )
+    parser.add_argument(
+        "--no-download",
+        action="store_true",
+        help="Pour clubelo : réutilise directement data/clubelo_ranking.html sans appel réseau.",
+    )
+    parser.add_argument(
+        "targets",
+        nargs="*",
+        metavar="AAAA-MM-JJ | fichier.html",
+        help="Date historique (AAAA-MM-JJ) ou fichier(s) HTML ClubElo.",
+    )
+    parsed = parser.parse_args(argv)
+    targets: list[str] = parsed.targets
+
+    html_args = [Path(arg).expanduser() for arg in targets if arg.lower().endswith((".html", ".htm"))]
+    if html_args:
+        if parsed.source == "beyondelo":
+            print("L'option --source beyondelo ne s'utilise pas avec des fichiers HTML.", file=sys.stderr)
+            return 2
+        resolved_files: list[Path] = []
+        for path in html_args:
+            candidate = path if path.is_absolute() or path.is_file() else (DATA_DIR / path)
+            if not candidate.is_file():
+                candidate = ROOT_DIR / path
+            if not candidate.is_file():
+                print(f"Fichier HTML introuvable : {path}", file=sys.stderr)
+                return 1
+            resolved_files.append(candidate.resolve())
+        return fetch_and_save_elo(source=parsed.source, html_files=resolved_files)
+
+    if len(targets) > 1:
+        parser.print_usage(sys.stderr)
+        return 2
+
+    requested_date = targets[0] if targets else None
+    if requested_date is not None:
+        try:
+            dt.date.fromisoformat(requested_date)
+        except ValueError:
+            parser.print_usage(sys.stderr)
+            return 2
+
+    return fetch_and_save_elo(
+        source=parsed.source,
+        date=requested_date,
+        no_download=parsed.no_download,
+    )
 
 
 if __name__ == "__main__":

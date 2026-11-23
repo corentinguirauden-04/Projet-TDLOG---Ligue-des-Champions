@@ -1,355 +1,177 @@
-# Simulateur Monte Carlo — Ligue des champions 2026-2027
+# Simulateur Monte Carlo — Ligue des Champions 2026-2027
 
-Ce dépôt contient les modules Python utilisés pour estimer les chances de qualification des 36 clubs de la phase de ligue de la Ligue des champions, produire des graphiques de synthèse et les explorer dans une interface web interactive.
+Application Python + interface web interactive permettant d'estimer les probabilités de qualification des **36 clubs** de la phase de ligue de la Ligue des Champions, de générer les graphiques analytiques complets et de les explorer dans le navigateur.
 
 Le projet combine :
+- les résultats réels et le calendrier officiel de la phase de ligue (144 matchs, 8 journées) ;
+- trois sources de notes Elo (**ClubElo** automatisé, **beyondELO** via API, **Personnalisé** manuel) ;
+- un moteur Monte Carlo vectorisé NumPy (loi de Poisson + mise à jour dynamique des Elo) ;
+- une génération complète de visuels Matplotlib (fiches par club, distributions par place, vues globales, CSV) ;
+- une interface web interactive (`web_app.py` / `web/`) sans framework externe.
 
-- les données de la compétition (résultats et calendrier) ;
-- les notes Elo des équipes (ClubElo, beyondELO ou Elo personnalisé manuel) ;
-- un modèle de buts fondé sur deux lois de Poisson ;
-- des simulations Monte Carlo de tous les matchs restants ;
-- des indicateurs statistiques et des visualisations ;
-- une interface web dynamique (`web_app.py` / `web/index.html`) pour naviguer entre les sources, comparer les clubs et relancer des simulations.
+---
 
-> **Périmètre :** ce README décrit l'ensemble des modules de calcul, les scripts d'orchestration (`main.py`, `generate_outputs.py`) ainsi que le serveur et le frontend web (`web_app.py`, `web/index.html`).
+## 1. Architecture & organisation du dépôt
 
-## 1. Organisation des fichiers
+Le dépôt suit une **architecture en couches** combinée à une **pipeline de traitement** (côté calcul batch) et un modèle **Client–Serveur / MVC** (côté web) :
 
-Les fichiers doivent être placés dans le même dossier et porter exactement ces noms :
+- **Modèle & données (`src/ldc/config.py`, `data.py`, `elo.py`, `simulation.py`)** : configuration centralisée, invariants calendrier, ingestion Elo et moteur mathématique pur (aucune écriture disque ni affichage dans `simulation.py`).
+- **Présentation & orchestration (`src/ldc/visualization.py`, `pipeline.py`)** : rendu Matplotlib factorisé et orchestration unique (`main.py`).
+- **Contrôleur & Vue web (`src/ldc/web_server.py` + `web/{index.html,styles.css,app.js}`)** : API REST JSON légère, verrouillage thread-safe (`_SIM_LOCK`) et séparation stricte HTML / CSS / JS côté frontend.
 
 ```text
-projet-ldc/
+Projet-TDLOG---Ligue-des-Champions/
 ├── README.md
-├── main.py
-├── generate_outputs.py
-├── ldc_data.py
-├── ldc_elo.py
-├── ldc_sim.py
-├── ldc_viz.py
-├── web_app.py
+├── requirements.txt
+├── .gitignore
+├── main.py                              # Point d'entrée CLI de la pipeline
+├── web_app.py                           # Point d'entrée du serveur web
+├── src/
+│   └── ldc/
+│       ├── __init__.py
+│       ├── config.py                    # Chemins et constantes centralisés
+│       ├── data.py                      # Calendrier (PLAYED/REMAINING), DEFAULT_ELO, validation & I/O Elo
+│       ├── elo.py                       # Ingestion ClubElo (API -> HTML auto) et beyondELO (API)
+│       ├── simulation.py                # Moteur Monte Carlo vectorisé NumPy + indicateurs
+│       ├── visualization.py             # Graphiques Matplotlib (style "plateau télé")
+│       ├── pipeline.py                  # Orchestration complète + export CSV
+│       └── web_server.py                # Serveur HTTP (stdlib) + API JSON REST
 ├── web/
-│   └── index.html
-└── outputs/
-    ├── clubelo/
-    │   ├── equipes/<equipe>/
-    │   └── classements/1.png ... 36.png
-    ├── beyondelo/
-    └── manual/
+│   ├── index.html                       # Structure HTML (SPA 6 onglets)
+│   ├── styles.css                       # Identité visuelle et responsive CSS
+│   └── app.js                           # État client, appels fetch et rendu dynamique
+├── data/
+│   ├── elo.json                         # Dernières notes Elo chargées par la simulation
+│   └── clubelo_ranking.html             # Instantané HTML ClubElo mis à jour automatiquement
+├── outputs/
+│   ├── clubelo/
+│   │   ├── equipes/<club>/{classement,points,matchs_cles}.png
+│   │   ├── classements/{1..36}.png
+│   │   ├── classement_global.png
+│   │   ├── seuils_points_top_8_16_24.png
+│   │   └── probabilites_equipes.csv
+│   ├── beyondelo/
+│   └── manual/
+├── tests/
+│   └── test_ldc.py                      # Tests unitaires et d'intégration (unittest)
+└── scripts/
+    └── prototype_match.py               # Prototype initial de calibration sur un match unique
 ```
 
-| Fichier | Rôle |
-|---|---|
-| `main.py` | Point d'entrée unique : choisit la source Elo (`clubelo` par défaut, `beyondelo` ou `manual`), vérifie les données et lance la génération complète dans `outputs/<source>/`. |
-| `generate_outputs.py` | Lance les simulations Monte Carlo, crée les fiches individuelles, les distributions par position (`classements/1.png` à `36.png`), les vues globales et le CSV des probabilités dans `outputs/<source>/`. |
-| `ldc_data.py` | Contient les 36 équipes, les notes Elo manuelles de secours (`DEFAULT_ELO`), les résultats déjà joués et les matchs restants. Vérifie aussi la cohérence du calendrier. |
-| `ldc_elo.py` | Récupère les notes Elo depuis ClubElo (API CSV avec repli automatique sur la page HTML `clubelo_ranking.html` téléchargée à jour) ou depuis l'API beyondELO (`--source beyondelo`), puis écrit `elo.json`. |
-| `ldc_sim.py` | Cœur du moteur Monte Carlo : simule les scores, met à jour éventuellement les Elo, calcule les classements et estime les probabilités. |
-| `ldc_viz.py` | Produit les graphiques : vue d'ensemble des 36 équipes, seuils globaux, fiches par équipe, distributions de points par position (`1` à `36`) et fiches de scénarios. |
-| `web_app.py` | Serveur HTTP léger (bibliothèque standard Python) qui sert l'interface web et permet de relancer des simulations depuis le navigateur. |
-| `web/index.html` | Interface web dynamique pour explorer les graphiques, comparer les clubs, consulter le calendrier et modifier les notes personnalisées. |
+---
 
 ## 2. Installation
 
-Les modules de récupération Elo (`ldc_elo.py`) et le serveur web (`web_app.py`) n'utilisent que la bibliothèque standard de Python. Le moteur et les graphiques nécessitent NumPy et Matplotlib.
-
-Dans l'environnement Python utilisé pour le projet :
+Seuls **NumPy** et **Matplotlib** sont nécessaires (la CLI, le parsing HTML/HTTP, le serveur web et les tests reposent uniquement sur la bibliothèque standard Python).
 
 ```powershell
-python -m pip install numpy matplotlib
+python -m pip install -r requirements.txt
 ```
 
-Vérifier ensuite que les fichiers du projet (ainsi que le dossier `web/`) sont dans le même répertoire et que le terminal est positionné dans ce dossier.
+> **Variable d'environnement optionnelle :** la clé API beyondELO peut être surchargée via `BEYONDELO_API_KEY` (une clé par défaut est définie dans `src/ldc/config.py`).
 
-## 3. Préparer les données de la compétition — `ldc_data.py`
+---
 
-Ce module est la source des données de la phase de ligue. Il définit :
+## 3. Points d'entrée & utilisation
 
-- `ELO` : dictionnaire `{nom_equipe: note_elo}` ;
-- `DEFAULT_ELO` : copie des notes Elo manuelles inscrites par défaut dans le fichier (utilisée par le mode `manual`) ;
-- `PLAYED` : liste des matchs déjà joués, sous la forme `(domicile, extérieur, buts_domicile, buts_extérieur)` ;
-- `REMAINING` : liste des matchs restant à jouer, sous la forme `(domicile, extérieur)` ;
-- `TEAMS` : liste triée des noms des 36 équipes ;
-- `ELO_DATE` : date présente dans `elo.json`, ou `None` si aucun fichier Elo n'a été chargé ;
-- `check()` : contrôles de cohérence du calendrier.
-
-Au chargement, `ldc_data.py` regarde si un fichier `elo.json` existe dans le même dossier. S'il existe et contient exactement les 36 noms attendus, il remplace le dictionnaire `ELO` intégré au fichier. Sinon, les valeurs de secours inscrites dans `ldc_data.py` restent utilisées.
-
-Le contrôle `check()` vérifie notamment qu'il y a 72 matchs joués et 72 matchs restants, que les 36 équipes disputent huit matchs au total (quatre à domicile et quatre à l'extérieur) et qu'aucune affiche n'est dupliquée.
-
-Lancer le contrôle :
+### Lancer la pipeline complète (`main.py`)
 
 ```powershell
-python ldc_data.py
+python main.py                                    # mode interactif (clubelo par défaut)
+python main.py --source clubelo                   # ClubElo : API -> repli HTML auto -> outputs/clubelo/
+python main.py --source beyondelo                 # API beyondELO -> outputs/beyondelo/
+python main.py --source manual                    # DEFAULT_ELO -> outputs/manual/
+python main.py --source manual --elo-file f.json  # Elo personnalisé JSON -> outputs/manual/
+python main.py --source beyondelo --n-sims 250000 # personnaliser le nombre de simulations
+python main.py --source clubelo --no-refresh      # réutiliser data/clubelo_ranking.html hors-ligne
 ```
 
-Le code fourni indique que les résultats et le calendrier proviennent d'UEFA.com et que la liste a été mise à jour le **4 novembre 2026**. Il faut actualiser `PLAYED` et `REMAINING` après les journées suivantes avant de lancer une nouvelle projection. Le calendrier et les résultats sont saisis manuellement dans ce fichier.
-
-> **Note sur les notes initiales :** la valeur de Stuttgart (1819) est explicitement signalée comme provisoire dans le code fourni. Elle est remplacée si `elo.json` est correctement généré.
-
-## 4. Actualiser les notes Elo — `ldc_elo.py`
-
-### Pipeline ClubElo (API avec repli HTML automatique)
-
-Avec `--source clubelo` (source par défaut), la pipeline gère automatiquement la récupération ClubElo sans source séparée :
-
-1. Le script essaie d'abord l'API CSV ClubElo (`api.clubelo.com`).
-2. Si l'API est indisponible (date du jour), il bascule automatiquement sur la page [ClubElo — Ranking](https://clubelo.com/Ranking) : il télécharge le HTML à jour, valide les données extraites, **remplace atomiquement `clubelo_ranking.html`**, puis extrait les notes Elo depuis ce fichier HTML.
-3. **Repli hors-ligne sécurisé :** si le réseau est indisponible, `clubelo_ranking.html` n'est pas écrasé et le fichier local existant est utilisé en secours.
-4. On peut aussi forcer la lecture du fichier HTML local sans aucun appel réseau avec `--no-download` (dans `ldc_elo.py`) ou `--no-refresh` (dans `main.py` / `generate_outputs.py`).
-
-```powershell
-python ldc_elo.py                       # ClubElo (API puis HTML auto -> clubelo_ranking.html -> elo.json)
-python ldc_elo.py --source clubelo      # idem
-python ldc_elo.py --no-download         # relit clubelo_ranking.html local sans appel réseau
-```
-
-Le parseur extrait en priorité le tableau JavaScript `eloData` (classement mondial complet de ~1 750 clubs trié par Elo décroissant, permettant de retrouver les **36/36 clubs** directement), puis les tableaux HTML et les objets JSON/Vega intégrés aux balises `<script>`, en normalisant les noms (accents, casse, ponctuation) via `CLUBELO_NAMES`. Si un club venait malgré tout à manquer, il serait complété par `DEFAULT_ELO` (affiché dans la console) avant l'écriture de `elo.json`.
-
-Il reste également possible de fournir explicitement un ou plusieurs fichiers HTML déjà téléchargés (sans déclencher de téléchargement) :
-
-```powershell
-python ldc_elo.py clubelo_ranking.html
-python ldc_elo.py clubelo_ENG.html clubelo_FRA.html clubelo_GER.html
-```
-
-### Source alternative : API beyondELO
-
-Il est aussi possible de récupérer directement les notes Elo depuis l'API beyondELO (`_fetch_api_beyondelo`), au même format de sortie :
-
-```powershell
-python ldc_elo.py --source beyondelo
-python ldc_elo.py --source beyondelo 2026-10-01
-```
-
-> **Note sur beyondELO :** beyondELO ne fournit pas un Elo stricte, mais une version étendue qui intègre l'importance des matchs et des ligues nationales, l'écart de buts et un avantage du terrain propre à chaque club, sur une échelle comparable à celle de ClubElo.
-
-**Interprétation de la date dans `elo.json` :** avec la méthode HTML, la date enregistrée est la date à laquelle le script a été exécuté. Elle ne certifie pas à elle seule la date exacte de mise à jour du classement par ClubElo. Il faut donc télécharger une page fraîche avant chaque actualisation.
-
-La même méthode est implémentée pour l'API ClubElo, si celui-ci vient à fonctionner de nouveau.
-
-### Format de sortie
-
-Le fichier généré garde le format attendu par `ldc_data.py`, avec l'indication de la source :
-
-```json
-{
-  "date": "2026-11-16",
-  "source": "beyondelo",
-  "elo": {
-    "AEK": 1685,
-    "Arsenal": 2161
-  }
-}
-```
-
-L'exemple est tronqué : le fichier réel contient les 36 équipes.
-
-## 5. Simuler la fin de la phase de ligue — `ldc_sim.py`
-
-Le module `ldc_sim.py` importe `ELO`, `PLAYED`, `REMAINING` et `TEAMS` depuis `ldc_data.py`.
-
-### Modèle de match
-
-La probabilité théorique de victoire de l'équipe à domicile est calculée à partir de l'écart Elo, avec un bonus de 100 points pour l'équipe qui reçoit :
-
-$$
-W = \frac{1}{1 + 10^{-((Elo_{\text{domicile}} + 100 - Elo_{\text{extérieur}}) / 400)}}
-$$
-
-
-Deux polynômes ajustés dans le projet convertissent ensuite `W` en buts moyens attendus :
-
-- `lam_home(W)` : lambda de l'équipe à domicile ;
-- `lam_away(W)` : lambda de l'équipe à l'extérieur.
-
-Les scores sont tirés aléatoirement :
-
-```python
-hg = rng.poisson(lam_home(W))
-ag = rng.poisson(lam_away(W))
-```
-
-Chaque score est donc une réalisation possible autour d'un nombre moyen de buts, pas une prédiction certaine.
-
-### Déroulement d'une simulation
-
-La fonction principale est `simulate()` (100 000 scénarios par défaut). Pour chaque scénario, elle :
-
-1. reprend les résultats réels de `PLAYED` ;
-2. génère les scores des matchs de `REMAINING` ;
-3. met à jour les notes Elo après chaque match si `update_elo=True` ;
-4. cumule les points, buts et autres statistiques ;
-5. calcule le classement final des 36 clubs.
-
-La vectorisation NumPy permet de traiter de nombreux scénarios dans des tableaux plutôt que de lancer une boucle Python indépendante pour chaque scénario.
-
-### Fonctions principales
-
-| Fonction | Rôle |
-|---|---|
-| `win_exp(elo1, elo2)` | Transforme un écart Elo en probabilité théorique de victoire. |
-| `lam_home(W)` / `lam_away(W)` | Convertissent la probabilité attendue en buts moyens pour chaque équipe. |
-| `elo_delta(W_home, hg, ag, k)` | Calcule la variation Elo après un résultat simulé. |
-| `lambdas_home(home, away, elo)` | Calcule les deux lambdas d'un match donné. |
-| `_table_from_matches(matches)` | Cumule les statistiques des équipes dans tous les scénarios. |
-| `_rank(stats, rng)` | Classe les 36 équipes dans chaque scénario. |
-| `current_table()` | Construit le classement actuel à partir des seuls matchs réellement joués. |
-| `simulate(...)` | Génère les scénarios de fin de phase de ligue. |
-| `rank_distribution(sim)` | Calcule la distribution des places finales de chaque équipe. |
-| `qualification_probs(sim)` | Calcule les probabilités Top 8, barrages, Top 24, élimination et les points moyens. |
-| `prob_objectives(sim, objectives)` | Calcule la probabilité que plusieurs objectifs soient atteints simultanément. |
-| `points_by_position(sim)` | Construit la matrice `(n_sims, 36)` du nombre de points du club classé à chaque position finale (1re à 36e). |
-| `points_thresholds(sim, positions)` | Calcule la distribution des points du club qui finit à certaines places (8e, 9e, 16e, etc.). |
-| `qualification_by_points(sim)` | Calcule pour chaque total de points (0 à 24) la probabilité de finir Top 8, en barrages ou éliminé. |
-| `match_importance(sim)` | Mesure pour chaque équipe le plus grand écart de classement final moyen (en places) entre les 3 issues possibles (`1` / `N` / `2`) de chaque match restant. |
-
-Exécuter directement le module lance un exemple de 20 000 simulations et affiche les dix équipes avec la plus forte probabilité de finir dans le Top 8 :
-
-```powershell
-python ldc_sim.py
-```
-
-Pour contrôler le nombre de simulations ou la graine aléatoire, importer le module et appeler `simulate` :
-
-```python
-import ldc_sim as sim
-
-resultats = sim.simulate(n_sims=100_000, seed=42)
-probabilites = sim.qualification_probs(resultats)
-
-for club, valeurs in sorted(
-    probabilites.items(),
-    key=lambda item: -item[1]["top8"]
-):
-    print(club, valeurs)
-```
-
-## 6. Produire les graphiques — `ldc_viz.py`
-
-`ldc_viz.py` contient les fonctions de visualisation. Elles reçoivent les résultats de `ldc_sim.py` et enregistrent les images au chemin fourni.
-
-| Fonction | Fichier produit / contenu |
-|---|---|
-| `overview(sim, table, path)` | Vue globale des 36 équipes, avec les probabilités Top 8 / barrages / élimination et le repère dynamique *« après la journée n, en date du xxx »*. |
-| `points_thresholds_card(sim, path, n_sims=None)` | Vue globale des seuils : barres empilées à 100 % donnant la probabilité de qualification directe, barrages ou élimination selon le nombre de points (avec moyenne, écart-type et mode des seuils Top 8 / 16 / 24). |
-| `position_points_card(position, sim, path, n_sims=None)` | Distribution du nombre de points obtenus par le club classé à la position `position` (1re à 36e), avec moyenne, écart-type, plage probable 80 % et score le plus fréquent. |
-| `team_card(team, sim, table, path, n_sims=None)` | Fiche d'une équipe : distribution des 36 places possibles, indicateurs de qualification, rang moyen et points moyens (avec leurs écarts-types). |
-| `team_points_card(team, sim, table, path, n_sims=None)` | Fiche d'une équipe : distribution des points finaux, moyenne, écart-type, plage probable (10e–90e percentile) et points actuels/max. |
-| `team_important_matches_card(team, sim, table, path, n_sims=None)` | Fiche d'une équipe : Top 10 des matchs restants les plus décisifs (les siens et ceux des concurrents), classés par le plus grand écart de classement final moyen (en places) entre les 3 issues (`1` / `N` / `2`). |
-| `objectives_card(sim, objectives, path)` | Fiche de scénario : probabilité de chaque objectif et probabilité jointe que tous soient atteints. |
-
-Exemple d'utilisation pour générer trois images :
-
-```python
-import ldc_sim as sim
-import ldc_viz as viz
-
-# 1. Construire le classement réel et lancer les simulations.
-table = sim.current_table()
-resultats = sim.simulate(n_sims=100_000, seed=42)
-
-# 2. Générer la vue globale.
-viz.overview(resultats, table, "classement_global.png")
-
-# 3. Générer une fiche pour le PSG.
-viz.team_card("PSG", resultats, table, "fiche_psg.png")
-
-# 4. Étudier un scénario combiné.
-objectifs = {"PSG": 8, "Lens": 24, "Lille": 24}
-viz.objectives_card(resultats, objectifs, "scenario.png")
-```
-
-Le sous-titre de l'ensemble des graphiques indique automatiquement la journée calculée depuis `ldc_data.PLAYED` ainsi que la date des notes Elo (`ldc_data.ELO_DATE`).
-
-## 7. Hypothèses et limites du modèle
-
-Les probabilités produites sont des estimations conditionnelles aux données et hypothèses du programme. Elles ne sont pas des probabilités officielles UEFA.
-
-- **Modèle de buts :** les buts domicile et extérieur sont tirés séparément selon deux lois de Poisson. Les polynômes de conversion Elo → lambdas sont des ajustements propres au projet.
-- **Elo :** le bonus domicile est fixé à 100 points. Le facteur `K_ELO` vaut 20 par défaut. Les notes sont mises à jour après chaque match simulé si `update_elo=True`.
-- **Ordre des matchs :** quand les Elo sont mis à jour, l'ordre de `REMAINING` a un effet sur les matchs simulés ultérieurs. Le fichier de données doit donc conserver les rencontres dans l'ordre chronologique attendu. Pour des matchs réellement simultanés, une mise à jour groupée par journée serait une amélioration possible.
-- **Départage :** le code utilise points, différence de buts, buts marqués, buts marqués à l'extérieur, victoires et victoires à l'extérieur, puis un tirage pseudo-aléatoire. Il ne modélise pas tous les critères UEFA.
-- **Résultats historiques :** ils sont considérés comme fixes et ne provoquent pas de mise à jour Elo dans `simulate`. Les Elo de départ sont supposés déjà tenir compte des matchs réels.
-- **Aléa Monte Carlo :** `seed=42` permet de reproduire une exécution. Augmenter `n_sims` réduit généralement le bruit statistique, au prix d'un temps de calcul plus élevé.
-- **Calendrier :** le contrôle fourni vérifie la structure des 144 matchs, mais il ne vérifie pas automatiquement que les scores ou les affiches correspondent toujours au calendrier officiel le plus récent.
-
-## 8. Ordre de travail recommandé
-
-Avant une nouvelle projection :
-
-1. Mettre à jour les résultats joués et les matchs restants dans `ldc_data.py`.
-2. Choisir la source Elo et exécuter la pipeline complète via `main.py` :
-   - `python main.py` ou `python main.py --source clubelo` (ClubElo : API avec repli HTML automatique, par défaut) ;
-   - `python main.py --source beyondelo` (API beyondELO) ;
-   - `python main.py --source manual` (notes `DEFAULT_ELO` de `ldc_data.py`, ou `--elo-file mon_elo.json` pour un Elo personnalisé).
-3. Lancer `python web_app.py` et ouvrir `http://127.0.0.1:8000` pour explorer les graphiques, comparer les clubs et ajuster les projections depuis l'interface web.
-
-## 9. Évolutions possibles
-
-- Mettre à jour les Elo par journée plutôt que match par match pour les rencontres simultanées.
-- Implémenter l'ensemble des critères de départage UEFA.
-- Ajouter des tests automatiques pour valider les distributions de probabilités, les dimensions des matrices et la cohérence des classements.
-
-## Générer les visualisations pour toutes les équipes
-
-Depuis le dossier contenant les fichiers Python, activez votre environnement virtuel puis exécutez `main.py` (ou directement `generate_outputs.py`) :
-
-```powershell
-python main.py --source clubelo
-python main.py --source beyondelo
-python main.py --source manual
-python main.py --source manual --elo-file mon_elo.json
-```
-
-Par défaut, le script réalise **100 000 simulations Monte Carlo** (graine aléatoire fixe : 42) et range tous les résultats dans `outputs/<source>/` (`outputs/clubelo/`, `outputs/beyondelo/` ou `outputs/manual/`) :
-
-- `outputs/<source>/equipes/<equipe>/classement.png` : distribution des places finales (de la 36e à gauche à la 1re à droite) et probabilités Top 8 / Top 24 / élimination pour l'équipe ;
-- `outputs/<source>/equipes/<equipe>/points.png` : distribution du nombre de points finaux pour l'équipe (moyenne en vert, plage probable 80 % en jaune) ;
-- `outputs/<source>/equipes/<equipe>/matchs_cles.png` : Top 10 des matchs restants les plus importants pour l'équipe (écart maximal de classement final moyen en places selon l'issue du match) ;
-- `outputs/<source>/classements/<1..36>.png` : distribution du nombre de points du club terminant exactement à la place `1`, `2`, ..., `36` ;
-- `outputs/<source>/classement_global.png` : vue générale des probabilités de qualification des 36 équipes (avec mention automatique de la journée et de la date) ;
-- `outputs/<source>/seuils_points_top_8_16_24.png` : graphique empilé à 100 % des probabilités d'issue finale (Top 8 / barrages / éliminé) selon le nombre de points ;
-- `outputs/<source>/probabilites_equipes.csv` : tableau des probabilités Top 8, Top 24, barrages, élimination, points moyens et probabilité de chacune des 36 places.
-
-Pour modifier le nombre de simulations, indiquez-le avec `--n-sims` (ou en argument de `generate_outputs.py`) :
-
-```powershell
-python main.py --source beyondelo --n-sims 250000
-python generate_outputs.py --source beyondelo 250000
-```
-
-Le nombre d'équipes est lu automatiquement dans `ldc_data.py`. Dans la version actuelle, le projet contient **36 équipes** (et non 32). Le nombre de graphiques s'adapte donc à la liste réellement chargée.
-
-Les probabilités Top 8 et Top 24 sont estimées comme la fréquence observée sur les simulations. La probabilité de barrages correspond aux places 9 à 24 ; la probabilité d'élimination correspond aux places 25 à 36. Les valeurs exactes pour chacune des places figurent dans le CSV.
-
-## Interface web interactive — `web_app.py`
-
-Le projet inclut une interface web dynamique (sans framework externe) reprenant l'identité visuelle des graphiques.
-
-### Lancement et accès
-
-Depuis le dossier du projet :
+Par défaut, **100 000 simulations Monte Carlo** sont exécutées (`seed=42`) et produisent dans `outputs/<source>/` :
+- `equipes/<club>/classement.png` : distribution des 36 places finales (36e à gauche → 1re à droite), probabilités Top 8 / Top 24 / élimination, rang moyen et points moyens (avec écarts-types) ;
+- `equipes/<club>/points.png` : distribution des points finaux, moyenne (vert-cyan), écart-type, plage probable 80 % (jaune) et points actuels/max ;
+- `equipes/<club>/matchs_cles.png` : Top 10 des matchs restants les plus décisifs (propres matchs et matchs des concurrents), classés par le plus grand écart de classement moyen (en places) entre les 3 issues (`1` / `N` / `2`) ;
+- `classements/1.png` à `36.png` : distribution du nombre de points du club terminant exactement à la place `x` (moyenne, écart-type, plage 80 %, score le plus fréquent) ;
+- `classement_global.png` : vue globale des 36 clubs en barres empilées Top 8 / barrages / éliminé ;
+- `seuils_points_top_8_16_24.png` : barres empilées à 100 % indiquant la probabilité d'issue finale selon le nombre de points (avec moyenne, écart-type et mode des seuils Top 8 / 16 / 24) ;
+- `probabilites_equipes.csv` : tableau CSV complet des probabilités (y compris chacune des 36 places).
+
+Le sous-titre de l'ensemble des graphiques affiche dynamiquement la journée calculée depuis `data.PLAYED` et la date des notes Elo (`après la journée n, en date du xxx`).
+
+### Lancer l'interface web interactive (`web_app.py`)
 
 ```powershell
 python web_app.py
 ```
 
-Puis ouvrir **`http://127.0.0.1:8000`** dans un navigateur.
+Puis ouvrir **`http://127.0.0.1:8000`**.
 
-Pour y accéder depuis un autre appareil sur le même réseau Wi-Fi (ex. un téléphone) :
+Pour accéder au site depuis un autre appareil du même réseau Wi-Fi (ex. un téléphone) :
 
 ```powershell
 python web_app.py --host 0.0.0.0
 ```
 
-Puis ouvrir `http://<adresse-IPv4-du-PC>:8000` (l'IPv4 locale s'obtient via `ipconfig`).
+Puis ouvrir `http://<IPv4-du-PC>:8000` (`ipconfig` sous Windows).
 
-### Contenu et fonctionnalités de l'interface
+**Onglets disponibles dans l'interface :**
+- **Barre de contrôle :** choix de la source (**ClubElo**, **beyondELO**, **Personnalisé**), nombre de scénarios (`20 000` à `1 000 000`, `100 000` par défaut), recalcul à la volée, et éditeur des 36 notes en mode *Personnalisé* (entiers entre `500` et `3 000`, réinitialisation en un clic).
+- **Accueil & Repères :** 4 paliers clés (grands favoris, bataille Top 8, cœur du peloton Top 16, fil du rasoir Top 24) + focus clubs français (PSG, Lille, Lens).
+- **Explorateur par Club :** fiche complète et 3 graphiques interactifs avec zoom plein écran.
+- **Classement & Seuils :** tableau triable/filtrable, vue globale graphique, seuils empilés par points et explorateur **Points par place (1re–36e)**.
+- **Comparateur Face-à-Face :** comparaison directe de deux clubs côte à côte.
+- **Calendrier & Scores :** résultats joués et matchs à venir, filtrables par club.
+- **Méthodologie & À propos :** explication accessible du format et du modèle.
 
-- **Barre de contrôle :** choix de l'indice de force (**ClubElo**, **beyondELO**, **Personnalisé**), choix du nombre de scénarios simulés (`20 000` à `1 000 000`, `100 000` par défaut) et bouton pour recalculer les projections à la volée. En mode **Personnalisé**, un éditeur permet de modifier les notes des 36 clubs (entiers entre `500` et `3 000`) ou de les remettre aux valeurs par défaut (`DEFAULT_ELO`).
-- **Accueil & Repères :** mise en avant des 4 paliers clés (1re place, bataille du Top 8, Top 16 tête de série, maintien dans le Top 24) et focus sur les clubs français (PSG, Lille, Lens).
-- **Explorateur par Club :** fiche détaillée de chaque équipe avec ses indicateurs et ses 3 graphiques (`classement`, `points`, `matchs_cles`), avec zoom plein écran au clic.
-- **Classement & Seuils :** tableau interactif des 36 clubs (triable par colonne et filtrable), vue d'ensemble graphique, seuils globaux empilés et explorateur **Points par place (1re–36e)** affichant les graphiques `classements/<1..36>.png`.
-- **Comparateur Face-à-Face :** comparaison directe des probabilités et des distributions de deux clubs côte à côte.
-- **Calendrier & Scores :** résultats déjà joués (J1–J4) et affiches à venir (J5–J8), filtrables par club.
-- **Méthodologie & À propos :** explication accessible du format de la compétition, des 3 indices et du calcul des projections.
+### Exécuter la suite de tests automatisés
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+Valide les invariants du calendrier (`data.check()`), la validation des notes Elo, le parsing complet `36/36` de `data/clubelo_ranking.html`, les propriétés mathématiques et la reproductibilité du moteur Monte Carlo, le rendu des 7 types de graphiques, la protection *path traversal* et les routes HTTP de `web_server.py`.
+
+---
+
+## 4. Pipeline d'actualisation des notes Elo (`src/ldc/elo.py`)
+
+### Source ClubElo (défaut)
+1. Tente d'abord l'API CSV historique (`api.clubelo.com`).
+2. Si l'API est indisponible (date du jour), télécharge automatiquement `https://clubelo.com/Ranking`, valide le contenu extrait, puis **remplace atomiquement `data/clubelo_ranking.html`** avant d'écrire `data/elo.json`.
+3. Le parseur extrait en priorité le tableau JavaScript `const eloData = [...]` (classement mondial complet de ~1 750 clubs trié par Elo décroissant, reconnaissant les **36/36 clubs** sans collision d'homonymes), puis les tableaux HTML et JSON/Vega.
+4. En cas d'absence de réseau, le fichier `data/clubelo_ranking.html` existant n'est pas écrasé et sert automatiquement de secours.
+
+### Source beyondELO
+Interroge l'API `public-api.beyondelo.com` (`--source beyondelo`, avec date historique optionnelle `--date AAAA-MM-JJ`). beyondELO fournit une note étendue intégrant l'importance des matchs, l'écart de buts et un avantage du terrain propre à chaque stade.
+
+---
+
+## 5. Modèle mathématique, hypothèses & limites (`src/ldc/simulation.py`)
+
+### Modèle de match
+La probabilité théorique de victoire de l'équipe à domicile inclut un bonus terrain de `HOME_BONUS = 100` points Elo :
+
+$$
+W = \frac{1}{1 + 10^{-((Elo_{\text{domicile}} + 100 - Elo_{\text{extérieur}}) / 400)}}
+$$
+
+Deux polynômes par morceaux (`lam_home(W)` et `lam_away(W)`) convertissent `W` en nombres moyens de buts attendus $(\lambda_{\text{dom}}, \lambda_{\text{ext}})$, puis les scores sont tirés selon deux lois de Poisson indépendantes.
+
+### Indicateurs exposés par `src/ldc/simulation.py`
+
+| Fonction | Rôle |
+|---|---|
+| `simulate(...)` | Simule `n_sims` fins de phase de ligue (vectorisé NumPy, mise à jour Elo `K_ELO = 20` après chaque match). |
+| `current_table()` | Calcule le classement réel actuel à partir de `PLAYED`. |
+| `rank_distribution(sim)` | Matrice `(36, 36)` de probabilité de chaque place finale par équipe. |
+| `qualification_probs(sim)` | Probabilités Top 8, barrages (9e–24e), Top 24, élimination (25e–36e) et points moyens. |
+| `points_by_position(sim)` | Matrice `(n_sims, 36)` des points du club classé à chaque position finale. |
+| `points_thresholds(sim, positions)` | Distribution des points aux places seuils (8e, 16e, 24e, etc.). |
+| `qualification_by_points(sim)` | Probabilité conditionnelle de finir Top 8 / barrages / éliminé selon le total final de points. |
+| `match_importance(sim)` | Plus grand écart de classement moyen (en places) entre les 3 issues (`1` / `N` / `2`) de chaque match restant, par conditionnement *a posteriori*. |
+| `prob_objectives(sim, objectives)` | Probabilité jointe qu'un ensemble d'objectifs soit atteint simultanément. |
+
+### Limites assumées
+- **Indépendance des buts :** les buts domicile et extérieur suivent deux lois de Poisson indépendantes (pas de correction de Dixon-Coles sur les petits scores).
+- **Mise à jour séquentielle des Elo :** les Elo évoluent match après match dans l'ordre chronologique de `REMAINING` (les matchs simultanés d'une même journée ne sont pas mis à jour par lots).
+- **Départage :** points, différence de buts, buts marqués, buts à l'extérieur, victoires, victoires à l'extérieur puis tirage aléatoire (les critères UEFA secondaires comme les points des adversaires ou le fair-play ne sont pas modélisés).
+- **Calendrier manuel :** après chaque nouvelle journée, actualiser `PLAYED` et `REMAINING` dans `src/ldc/data.py` puis vérifier avec `python -m unittest discover -s tests -v`.

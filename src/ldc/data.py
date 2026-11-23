@@ -1,13 +1,18 @@
-"""
-Données de la phase de ligue 2026-27 : Elo, résultats joués (J1-J4) et calendrier restant (J5-J8).
+"""Données de la phase de ligue 2026-27 : Elo par défaut, résultats joués (J1-J4) et calendrier (J5-J8).
+
 Source des matchs : UEFA.com (mise à jour du 4 novembre 2026).
 Convention : "Domicile - Extérieur", la première équipe reçoit.
 """
+from __future__ import annotations
 
-# Elo de départ : valeurs de ton fichier tdlog_projet.py.
-# ATTENTION : Stuttgart n'y figurait pas (36e équipe). La valeur 1800 est un PLACEHOLDER à remplacer
-# par la vraie valeur (même source que les autres Elo, ex. clubelo.com).
-ELO = {
+import json
+from pathlib import Path
+
+from ldc.config import ELO_FILE, MAX_ELO, MIN_ELO
+
+# Notes Elo manuelles de secours (36 clubs de la phase de ligue).
+# Remplacées dynamiquement par data/elo.json via `load_elo()`.
+DEFAULT_ELO: dict[str, int] = {
     "AEK": 1695, "Arsenal": 2047, "Aston Villa": 1899, "Atletico": 1910, "Dortmund": 1899,
     "Barcelona": 2032, "Bayern": 2046, "Bodo/Glimt": 1779, "Club Brugge": 1839, "Como": 1838,
     "Fenerbahce": 1779, "Feyenoord": 1716, "Galatasaray": 1824, "Inter": 1949, "LASK": 1643,
@@ -16,23 +21,8 @@ ELO = {
     "Real Betis": 1829, "Real Madrid": 2001, "Roma": 1865, "Slovan Bratislava": 1541,
     "Sabah": 1558, "Shakhtar": 1687, "Slavia Praha": 1744, "Sporting CP": 1863,
     "Viking": 1715, "Villarreal": 1789,
-    "Stuttgart": 1819,  # <-- PLACEHOLDER
+    "Stuttgart": 1819,
 }
-
-DEFAULT_ELO = dict(ELO)
-
-# Si elo.json existe (créé par ldc_elo.py à partir de ClubElo), il remplace les valeurs ci-dessus.
-import json as _json
-import os as _os
-
-ELO_DATE = None
-_p = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "elo.json")
-if _os.path.exists(_p):
-    with open(_p, encoding="utf-8") as _f:
-        _d = _json.load(_f)
-    assert set(_d["elo"]) == set(ELO), "elo.json incomplet ou noms différents"
-    ELO = _d["elo"]
-    ELO_DATE = _d["date"]
 
 _PLAYED = """
 AEK 1-0 LASK
@@ -185,34 +175,98 @@ Slovan Bratislava - Inter
 """
 
 
-def _split_result(line):
-    """'Club Brugge 2-3 Aston Villa' -> ('Club Brugge', 'Aston Villa', 2, 3)"""
-    toks = line.split()
-    for i, t in enumerate(toks):
-        if len(t) == 3 and t[0].isdigit() and t[1] == "-" and t[2].isdigit():
-            return " ".join(toks[:i]), " ".join(toks[i + 1:]), int(t[0]), int(t[2])
-    raise ValueError(f"score introuvable : {line}")
+def _split_result(line: str) -> tuple[str, str, int, int]:
+    """'Club Brugge 2-3 Aston Villa' -> ('Club Brugge', 'Aston Villa', 2, 3)."""
+    tokens = line.split()
+    for i, token in enumerate(tokens):
+        if "-" in token:
+            left, _, right = token.partition("-")
+            if left.isdigit() and right.isdigit():
+                return " ".join(tokens[:i]), " ".join(tokens[i + 1:]), int(left), int(right)
+    raise ValueError(f"Score introuvable : {line}")
 
 
-PLAYED = [_split_result(l) for l in _PLAYED.strip().splitlines()]
-REMAINING = [tuple(s.strip() for s in l.split(" - ")) for l in _REMAINING.strip().splitlines()]
-TEAMS = sorted(ELO)
+PLAYED: list[tuple[str, str, int, int]] = [_split_result(line) for line in _PLAYED.strip().splitlines()]
+REMAINING: list[tuple[str, str]] = [
+    tuple(part.strip() for part in line.split(" - "))  # type: ignore[misc]
+    for line in _REMAINING.strip().splitlines()
+]
+TEAMS: list[str] = sorted(DEFAULT_ELO)
 
 
-def check():
+def current_matchday() -> int:
+    """Nombre de journées complètes déjà disputées (18 matchs par journée pour 36 clubs)."""
+    matches_per_day = max(1, len(TEAMS) // 2)
+    return len(PLAYED) // matches_per_day
+
+
+def total_matchdays() -> int:
+    """Nombre total de journées de la phase de ligue."""
+    matches_per_day = max(1, len(TEAMS) // 2)
+    return (len(PLAYED) + len(REMAINING)) // matches_per_day
+
+
+def validate_elo_map(raw_elo: object) -> tuple[dict[str, int] | None, str | None]:
+    """Valide un dictionnaire {équipe: note_elo} (36 équipes exactes, entiers dans [MIN_ELO, MAX_ELO])."""
+    if not isinstance(raw_elo, dict):
+        return None, "Le format des notes Elo est invalide."
+    expected = set(DEFAULT_ELO)
+    if set(raw_elo.keys()) != expected:
+        return None, f"Les {len(expected)} équipes de la compétition doivent être renseignées."
+
+    cleaned: dict[str, int] = {}
+    for team, val in raw_elo.items():
+        if isinstance(val, bool):
+            return None, f"La note de {team} doit être un nombre entier."
+        try:
+            num = int(round(float(val)))
+        except (TypeError, ValueError):
+            return None, f"La note de {team} doit être un nombre entier."
+        if not MIN_ELO <= num <= MAX_ELO:
+            return None, f"La note de {team} ({num}) doit être comprise entre {MIN_ELO} et {MAX_ELO}."
+        cleaned[team] = num
+    return cleaned, None
+
+
+def load_elo(path: Path = ELO_FILE) -> tuple[dict[str, int], str | None]:
+    """Charge les notes Elo et la date depuis `data/elo.json`, ou renvoie `DEFAULT_ELO` en secours."""
+    if path.is_file():
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        elo_map, err = validate_elo_map(payload.get("elo"))
+        if err or elo_map is None:
+            raise ValueError(f"{path.name} invalide : {err}")
+        return elo_map, payload.get("date")
+    return dict(DEFAULT_ELO), None
+
+
+def write_elo_json(
+    elo: dict[str, int],
+    date: str,
+    source: str,
+    path: Path = ELO_FILE,
+) -> None:
+    """Écrit `elo.json` de manière atomique (fichier temporaire puis remplacement)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"date": date, "source": source, "elo": elo}
+    temp_path = path.with_suffix(".json.tmp")
+    temp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    temp_path.replace(path)
+
+
+def check() -> bool:
     """Vérifie la cohérence du calendrier : 144 matchs, 8 par équipe (4 dom / 4 ext), pas de doublon."""
-    allm = [(h, a) for h, a, _, _ in PLAYED] + REMAINING
+    all_matches = [(h, a) for h, a, _, _ in PLAYED] + REMAINING
     assert len(PLAYED) == 72, len(PLAYED)
     assert len(REMAINING) == 72, len(REMAINING)
     assert len(TEAMS) == 36
-    for t in TEAMS:
-        home = sum(h == t for h, _ in allm)
-        away = sum(a == t for _, a in allm)
-        assert home == 4 and away == 4, (t, home, away)
-    pairs = {frozenset(m) for m in allm}
+    for team in TEAMS:
+        home = sum(h == team for h, _ in all_matches)
+        away = sum(a == team for _, a in all_matches)
+        assert home == 4 and away == 4, (team, home, away)
+    pairs = {frozenset(m) for m in all_matches}
     assert len(pairs) == 144, len(pairs)
-    for h, a in allm:
-        assert h in ELO and a in ELO, (h, a)
+    for h, a in all_matches:
+        assert h in DEFAULT_ELO and a in DEFAULT_ELO, (h, a)
     return True
 
 
