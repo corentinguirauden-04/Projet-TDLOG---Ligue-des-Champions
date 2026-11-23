@@ -149,6 +149,22 @@
             <div id="club-chart-caption" class="chart-caption"></div>
             <div id="club-chart-display"></div>
           </div>
+
+          <div class="chart-stage club-schedule-stage">
+            <div class="chart-subtabs">
+              <div>
+                <h3 class="section-title" id="club-schedule-title" style="font-size: 1.15rem; margin-bottom: 2px;">Calendrier à venir</h3>
+                <p class="brand-sub" id="club-schedule-sub">Affiches restantes, probabilités (1 / N / 2) et importance pour chaque club.</p>
+              </div>
+              <div class="cal-legend">
+                <span class="cal-legend-item"><span class="legend-swatch" style="background: var(--top8);"></span>Domicile</span>
+                <span class="cal-legend-item"><span class="legend-swatch" style="background: #6f82cf;"></span>Nul</span>
+                <span class="cal-legend-item"><span class="legend-swatch" style="background: var(--play);"></span>Extérieur</span>
+                <span class="cal-legend-item"><span class="legend-swatch" style="background: var(--out);"></span>Choc décisif</span>
+              </div>
+            </div>
+            <div id="club-upcoming-matches" class="matches-grid club-matches-grid"></div>
+          </div>
         </div>
       </div>
     </section>
@@ -270,22 +286,37 @@
     <!-- PAGE 5 : CALENDRIER & RÉSULTATS -->
     <section id="page-calendar" class="page-view">
       <div class="card-panel">
-        <div class="chart-subtabs">
+        <div class="cal-header">
           <div>
-            <h2 class="section-title">Calendrier de la phase de ligue (144 matchs)</h2>
-            <p class="section-desc" style="margin-bottom: 0;">Consultez les résultats des journées J1 à J4 et les affiches restantes des journées J5 à J8.</p>
+            <h2 class="section-title">Calendrier & Affiches de la phase de ligue</h2>
+            <p class="section-desc" id="calendar-subtitle" style="margin-bottom: 0;">
+              Naviguez librement d'une journée à l'autre : résultats officiels, probabilités de chaque affiche (1 / N / 2) et impact sur le classement final des deux clubs.
+            </p>
           </div>
           <div class="control-row">
-            <select id="calendar-club-filter">
+            <select id="calendar-club-filter" aria-label="Filtrer par club">
               <option value="">Tous les clubs (36)</option>
             </select>
-            <div class="pill-group" id="calendar-mode">
-              <button class="pill-btn active" data-cal="remaining" type="button">Matchs à venir (J5–J8)</button>
-              <button class="pill-btn" data-cal="played" type="button">Résultats joués (J1–J4)</button>
-            </div>
+            <select id="calendar-sort" aria-label="Trier les affiches">
+              <option value="order">Ordre des affiches</option>
+              <option value="stakes">Plus gros enjeux d'abord</option>
+              <option value="balanced">Matchs les plus indécis</option>
+            </select>
           </div>
         </div>
-        <div id="calendar-list" class="matches-grid" style="margin-top: 16px;"></div>
+
+        <!-- Sélecteur dynamique de journée -->
+        <div class="md-nav-bar">
+          <button id="cal-prev-md" class="btn-ghost md-arrow" type="button" title="Journée précédente">←</button>
+          <div id="calendar-matchdays" class="md-pills" role="tablist" aria-label="Choix de la journée"></div>
+          <button id="cal-next-md" class="btn-ghost md-arrow" type="button" title="Journée suivante">→</button>
+        </div>
+
+        <!-- Bandeau récapitulatif & légende couleur -->
+        <div id="calendar-summary" class="cal-summary-bar"></div>
+
+        <!-- Grille des matchs -->
+        <div id="calendar-list" class="cal-matches-container"></div>
       </div>
     </section>
 

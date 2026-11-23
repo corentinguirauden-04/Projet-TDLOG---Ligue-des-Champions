@@ -62,6 +62,54 @@ def write_probabilities_csv(
             writer.writerow(row)
 
 
+def write_remaining_matches_json(
+    sim: dict,
+    importance: dict[str, list[dict]],
+    path: Path,
+) -> None:
+    """Exporte pour chaque match restant ses probabilités (1 / N / 2) et son importance pour les 2 clubs."""
+    matches_per_day = max(1, len(ldc_data.TEAMS) // 2)
+    cur_md = ldc_data.current_matchday()
+    outcomes = sim["match_outcomes"]
+
+    # Indexe rapidement l'importance de chaque match par (équipe, home, away).
+    imp_lookup: dict[tuple[str, str, str], dict] = {
+        (team, entry["home"], entry["away"]): entry
+        for team, entries in importance.items()
+        for entry in entries
+    }
+
+    rows: list[dict] = []
+    for m_idx, (home, away) in enumerate(sim["remaining"]):
+        col = outcomes[:, m_idx]
+        p_home = float((col == 2).mean())
+        p_draw = float((col == 1).mean())
+        p_away = float((col == 0).mean())
+
+        h_imp = imp_lookup.get((home, home, away), {})
+        a_imp = imp_lookup.get((away, home, away), {})
+        rows.append(
+            {
+                "matchday": m_idx // matches_per_day + cur_md + 1,
+                "home": home,
+                "away": away,
+                "p_home": round(p_home, 4),
+                "p_draw": round(p_draw, 4),
+                "p_away": round(p_away, 4),
+                "home_imp": round(float(h_imp.get("importance", 0.0)), 2),
+                "home_best_rank": round(float(h_imp.get("best_rank", 0.0)), 1),
+                "home_worst_rank": round(float(h_imp.get("worst_rank", 0.0)), 1),
+                "away_imp": round(float(a_imp.get("importance", 0.0)), 2),
+                "away_best_rank": round(float(a_imp.get("best_rank", 0.0)), 1),
+                "away_worst_rank": round(float(a_imp.get("worst_rank", 0.0)), 1),
+            }
+        )
+
+    temp_path = path.with_suffix(".json.tmp")
+    temp_path.write_text(json.dumps(rows, indent=2, ensure_ascii=False), encoding="utf-8")
+    temp_path.replace(path)
+
+
 def _prepare_elo_source(
     source: str,
     date: str | None = None,
@@ -175,6 +223,9 @@ def run_pipeline(
 
     csv_path = output_dir / "probabilites_equipes.csv"
     write_probabilities_csv(sim, rank_dist, qualifications, csv_path)
+
+    matches_json_path = output_dir / "matchs_restants.json"
+    write_remaining_matches_json(sim, importance, matches_json_path)
 
     print("\nTerminé !")
     print(f"Source : {source}")

@@ -18,7 +18,8 @@ const state = {
   tableFilter: "all",
   sortKey: "exp_pts",
   sortDesc: true,
-  calMode: "remaining",
+  calMatchday: null,
+  calSort: "order",
   calClub: "",
   cacheBust: Date.now(),
 };
@@ -108,6 +109,10 @@ async function loadState(source = null) {
     drawer.classList.remove("open");
   }
 
+  if (state.calMatchday === null) {
+    state.calMatchday = Math.min(state.matchday + 1, state.totalMatchdays);
+  }
+
   renderSourceButtons();
   renderManualEditor();
   renderHomeTiers();
@@ -117,6 +122,7 @@ async function loadState(source = null) {
   renderDuelSelectors();
   renderDuelPage();
   renderCalendarFilter();
+  renderCalendarMatchdays();
   renderCalendar();
 }
 
@@ -369,6 +375,45 @@ function renderClubExplorer() {
       </div>
     `;
   }
+
+  renderClubUpcomingMatches(club.team);
+}
+
+function renderClubUpcomingMatches(teamName) {
+  const box = document.getElementById("club-upcoming-matches");
+  const titleEl = document.getElementById("club-schedule-title");
+  const subEl = document.getElementById("club-schedule-sub");
+  if (!box) return;
+
+  const teamMap = new Map(state.teams.map(t => [t.team, t]));
+  const upcoming = state.remaining
+    .filter(m => m.home === teamName || m.away === teamName)
+    .sort((a, b) => a.matchday - b.matchday);
+
+  const nHome = upcoming.filter(m => m.home === teamName).length;
+  const nAway = upcoming.length - nHome;
+
+  if (titleEl) {
+    titleEl.textContent = `Calendrier à venir — ${teamName}`;
+  }
+  if (subEl) {
+    subEl.textContent = upcoming.length > 0
+      ? `${upcoming.length} affiches restantes (${nHome} à domicile, ${nAway} à l'extérieur) · Probabilités 1 / N / 2 et importance pour les deux clubs`
+      : "Aucun match restant pour ce club.";
+  }
+
+  if (upcoming.length === 0) {
+    box.innerHTML = `<div class="cal-empty">Aucune affiche restante.</div>`;
+    return;
+  }
+
+  box.innerHTML = upcoming
+    .map(m => renderMatchCard(m, false, teamMap, teamName))
+    .join("");
+
+  box.querySelectorAll(".mc-team-btn[data-team]").forEach(btn => {
+    btn.onclick = () => selectClubAndOpen(btn.dataset.team);
+  });
 }
 
 function renderRankPointsChart() {
@@ -525,27 +570,292 @@ function renderCalendarFilter() {
   sel.value = currentVal;
 }
 
+function renderCalendarMatchdays() {
+  const box = document.getElementById("calendar-matchdays");
+  if (!box) return;
+
+  const buttons = [];
+  for (let md = 1; md <= state.totalMatchdays; md++) {
+    const isPlayed = md <= state.matchday;
+    const isActive = state.calMatchday === md;
+    const cls = `md-pill ${isPlayed ? "played-md" : "upcoming-md"}${isActive ? " active" : ""}`;
+    const tip = isPlayed ? `Journée ${md} (terminée)` : `Journée ${md} (à venir)`;
+    buttons.push(
+      `<button type="button" class="${cls}" data-md="${md}" title="${tip}" role="tab" aria-selected="${isActive}">` +
+      `<span class="md-dot"></span>J${md}</button>`
+    );
+    if (md === state.matchday && md < state.totalMatchdays) {
+      buttons.push(`<span class="md-sep" aria-hidden="true"></span>`);
+    }
+  }
+
+  const allActive = state.calMatchday === "all";
+  buttons.push(`<span class="md-sep" aria-hidden="true"></span>`);
+  buttons.push(
+    `<button type="button" class="md-pill all-md${allActive ? " active" : ""}" data-md="all" title="Afficher les 8 journées" role="tab" aria-selected="${allActive}">` +
+    `<span class="md-dot"></span>Toutes</button>`
+  );
+
+  box.innerHTML = buttons.join("");
+  box.querySelectorAll(".md-pill").forEach(btn => {
+    btn.onclick = () => {
+      state.calMatchday = btn.dataset.md === "all" ? "all" : parseInt(btn.dataset.md, 10);
+      renderCalendarMatchdays();
+      renderCalendar();
+    };
+  });
+
+  const prevBtn = document.getElementById("cal-prev-md");
+  const nextBtn = document.getElementById("cal-next-md");
+  if (prevBtn) prevBtn.disabled = state.calMatchday === "all" || state.calMatchday <= 1;
+  if (nextBtn) nextBtn.disabled = state.calMatchday === "all" || state.calMatchday >= state.totalMatchdays;
+}
+
+function stakesTier(imp) {
+  if (imp >= 6.7) return { cls: "high", label: "Choc décisif" };
+  if (imp >= 5.2) return { cls: "med", label: "Enjeu élevé" };
+  return { cls: "low", label: "Enjeu modéré" };
+}
+
+function zoneDotClass(rank) {
+  if (!rank) return "play";
+  if (rank <= 8) return "top8";
+  if (rank <= 24) return "play";
+  return "out";
+}
+
+function renderTeamMeta(teamName, teamMap) {
+  const info = teamMap.get(teamName);
+  if (!info) return "";
+  const dot = zoneDotClass(info.cur_rank);
+  return `<span class="mc-team-meta"><span class="zone-dot ${dot}"></span>${info.cur_rank}e · ${info.cur_pts} pts</span>`;
+}
+
+function renderImpactBox(teamName, imp, bestRank, worstRank, isFocused = false) {
+  const tier = stakesTier(imp);
+  const fillPct = Math.min(100, Math.round((imp / 7.5) * 100));
+  const rangeText = bestRank > 0 && worstRank > 0
+    ? `Rang moyen : ${bestRank.toFixed(1)}e → ${worstRank.toFixed(1)}e`
+    : "Impact sur le classement final";
+  return `
+    <div class="mc-imp-box${isFocused ? " focused" : ""}">
+      <div class="mc-imp-top">
+        <span class="mc-imp-club" title="Importance pour ${teamName}">Enjeu ${teamName}</span>
+        <span class="mc-imp-val ${tier.cls}">±${imp.toFixed(1)} pl.</span>
+      </div>
+      <div class="mc-imp-meter">
+        <div class="mc-imp-fill ${tier.cls}" style="width: ${fillPct}%"></div>
+      </div>
+      <div class="mc-imp-range">${rangeText}</div>
+    </div>
+  `;
+}
+
+function renderMatchCard(m, isPlayed, teamMap, focusTeam = null) {
+  if (isPlayed) {
+    const winner = m.winner || (m.hg > m.ag ? "home" : (m.ag > m.hg ? "away" : "draw"));
+    const homeCls = winner === "home" ? "winner" : (winner === "away" ? "loser" : "");
+    const awayCls = winner === "away" ? "winner" : (winner === "home" ? "loser" : "");
+    const cardCls = winner === "draw" ? "played-draw" : "played-win";
+    const statusLabel = winner === "draw"
+      ? `<span class="mc-badge med">Match nul</span>`
+      : `<span class="mc-badge low">Score final</span>`;
+
+    return `
+      <article class="match-card ${cardCls}">
+        <div class="mc-head">
+          <span class="mc-md-tag">Journée ${m.matchday} · Terminé</span>
+          ${statusLabel}
+        </div>
+        <div class="mc-teams">
+          <div class="mc-team home ${homeCls}">
+            <button type="button" class="mc-team-btn" data-team="${m.home}">${m.home}</button>
+            ${renderTeamMeta(m.home, teamMap)}
+          </div>
+          <div class="mc-center">
+            <span class="match-score ${winner === "draw" ? "draw" : ""}">${m.hg} - ${m.ag}</span>
+          </div>
+          <div class="mc-team away ${awayCls}">
+            <button type="button" class="mc-team-btn" data-team="${m.away}">${m.away}</button>
+            ${renderTeamMeta(m.away, teamMap)}
+          </div>
+        </div>
+      </article>
+    `;
+  }
+
+  const hasStats = typeof m.p_home === "number" && typeof m.home_imp === "number";
+  const avgImp = hasStats ? (m.home_imp + m.away_imp) / 2 : 0;
+  const tier = hasStats ? stakesTier(avgImp) : { cls: "neutral", label: "À venir" };
+  const cardStakesCls = hasStats ? `stakes-${tier.cls}` : "";
+
+  const fav = hasStats
+    ? (m.p_home >= m.p_away && m.p_home >= m.p_draw ? "home" : (m.p_away >= m.p_home && m.p_away >= m.p_draw ? "away" : "draw"))
+    : "";
+
+  const probsHtml = hasStats ? `
+    <div class="mc-probs">
+      <div class="mc-prob-labels">
+        <span class="mc-prob-home ${fav === "home" ? "fav" : ""}">Dom. <span class="mc-prob-val">${pct(m.p_home)}</span></span>
+        <span class="mc-prob-draw ${fav === "draw" ? "fav" : ""}">Nul <span class="mc-prob-val">${pct(m.p_draw)}</span></span>
+        <span class="mc-prob-away ${fav === "away" ? "fav" : ""}">Ext. <span class="mc-prob-val">${pct(m.p_away)}</span></span>
+      </div>
+      <div class="mc-prob-bar" title="Domicile ${pct(m.p_home)} · Nul ${pct(m.p_draw)} · Extérieur ${pct(m.p_away)}">
+        <div class="mc-seg-home" style="width: ${(m.p_home * 100).toFixed(1)}%"></div>
+        <div class="mc-seg-draw" style="width: ${(m.p_draw * 100).toFixed(1)}%"></div>
+        <div class="mc-seg-away" style="width: ${(m.p_away * 100).toFixed(1)}%"></div>
+      </div>
+    </div>
+  ` : "";
+
+  const impactsHtml = hasStats ? `
+    <div class="mc-impacts">
+      ${renderImpactBox(m.home, m.home_imp, m.home_best_rank, m.home_worst_rank, focusTeam === m.home)}
+      ${renderImpactBox(m.away, m.away_imp, m.away_best_rank, m.away_worst_rank, focusTeam === m.away)}
+    </div>
+  ` : "";
+
+  const venueTag = focusTeam
+    ? (focusTeam === m.home
+      ? `<span class="mc-venue-tag home">Domicile</span>`
+      : `<span class="mc-venue-tag away">Extérieur</span>`)
+    : "";
+
+  const badgeText = hasStats ? `${tier.label} · moy. ±${avgImp.toFixed(1)} pl.` : "À venir";
+
+  return `
+    <article class="match-card ${cardStakesCls}">
+      <div class="mc-head">
+        <span class="mc-md-tag">Journée ${m.matchday} · À venir${venueTag}</span>
+        <span class="mc-badge ${tier.cls}">${badgeText}</span>
+      </div>
+      <div class="mc-teams">
+        <div class="mc-team home">
+          <button type="button" class="mc-team-btn" data-team="${m.home}">${m.home}</button>
+          ${renderTeamMeta(m.home, teamMap)}
+        </div>
+        <div class="mc-center">
+          <span class="mc-vs">VS</span>
+        </div>
+        <div class="mc-team away">
+          <button type="button" class="mc-team-btn" data-team="${m.away}">${m.away}</button>
+          ${renderTeamMeta(m.away, teamMap)}
+        </div>
+      </div>
+      ${probsHtml}
+      ${impactsHtml}
+    </article>
+  `;
+}
+
+function sortUpcomingMatches(list) {
+  const copy = [...list];
+  if (state.calSort === "stakes") {
+    copy.sort((a, b) =>
+      ((b.home_imp || 0) + (b.away_imp || 0)) - ((a.home_imp || 0) + (a.away_imp || 0))
+    );
+  } else if (state.calSort === "balanced") {
+    copy.sort((a, b) => Math.abs((a.p_home || 0) - (a.p_away || 0)) - Math.abs((b.p_home || 0) - (b.p_away || 0)));
+  }
+  return copy;
+}
+
 function renderCalendar() {
   const box = document.getElementById("calendar-list");
-  const list = state.calMode === "played" ? state.played : state.remaining;
-  const filtered = list.filter(m => !state.calClub || m.home === state.calClub || m.away === state.calClub);
+  const summary = document.getElementById("calendar-summary");
+  const sortSel = document.getElementById("calendar-sort");
+  if (!box) return;
 
-  box.innerHTML = filtered
-    .map(m => {
-      const right = state.calMode === "played"
-        ? `<span class="match-score">${m.hg} - ${m.ag}</span>`
-        : `<span class="tier-badge">À venir</span>`;
-      return `
-        <div class="match-pill">
-          <div>
-            <span class="match-j">J${m.matchday}</span>
-            <strong>${m.home}</strong> - ${m.away}
-          </div>
-          ${right}
+  const teamMap = new Map(state.teams.map(t => [t.team, t]));
+  const clubFilter = state.calClub;
+  const matchClub = m => !clubFilter || m.home === clubFilter || m.away === clubFilter;
+
+  const isSinglePlayed = typeof state.calMatchday === "number" && state.calMatchday <= state.matchday;
+  if (sortSel) sortSel.disabled = isSinglePlayed;
+
+  const sections = [];
+  let totalShown = 0;
+  let hasUpcoming = false;
+
+  const matchdaysToShow = state.calMatchday === "all"
+    ? Array.from({ length: state.totalMatchdays }, (_, i) => i + 1)
+    : [state.calMatchday];
+
+  for (const md of matchdaysToShow) {
+    const isPlayed = md <= state.matchday;
+    const sourceList = isPlayed ? state.played : state.remaining;
+    let items = sourceList.filter(m => m.matchday === md && matchClub(m));
+    if (!isPlayed) {
+      items = sortUpcomingMatches(items);
+      if (items.length > 0) hasUpcoming = true;
+    }
+    if (items.length === 0) continue;
+    totalShown += items.length;
+    sections.push({ md, isPlayed, items });
+  }
+
+  if (summary) {
+    const mdLabel = state.calMatchday === "all"
+      ? `Toutes les journées (J1–J${state.totalMatchdays})`
+      : `Journée ${state.calMatchday} (${state.calMatchday <= state.matchday ? "terminée" : "à venir"})`;
+    const clubLabel = clubFilter ? ` · Filtre : ${clubFilter}` : "";
+    const countLabel = `${totalShown} match${totalShown > 1 ? "s" : ""}`;
+    const legendHtml = hasUpcoming
+      ? `
+        <div class="cal-legend">
+          <span class="cal-legend-item"><span class="legend-swatch" style="background: var(--top8);"></span>Domicile</span>
+          <span class="cal-legend-item"><span class="legend-swatch" style="background: #6f82cf;"></span>Nul</span>
+          <span class="cal-legend-item"><span class="legend-swatch" style="background: var(--play);"></span>Extérieur</span>
+          <span class="cal-legend-item"><span class="legend-swatch" style="background: var(--out);"></span>Choc décisif (≥ 6.7 pl.)</span>
+        </div>
+      `
+      : `
+        <div class="cal-legend">
+          <span class="cal-legend-item"><span class="legend-swatch" style="background: var(--top8);"></span>Vainqueur / Top 8</span>
+          <span class="cal-legend-item"><span class="legend-swatch" style="background: var(--play);"></span>Match nul / Barrages</span>
+          <span class="cal-legend-item"><span class="legend-swatch" style="background: var(--out);"></span>Zone élimination</span>
         </div>
       `;
-    })
-    .join("");
+    summary.innerHTML = `<div class="cal-summary-main">${mdLabel}${clubLabel} · ${countLabel}</div>${legendHtml}`;
+  }
+
+  if (sections.length === 0) {
+    box.innerHTML = `<div class="cal-empty">Aucun match ne correspond à ce filtre.</div>`;
+    return;
+  }
+
+  // Vue compacte 2 colonnes quand on affiche le parcours complet (J1–J8) d'un seul club.
+  if (state.calMatchday === "all" && clubFilter) {
+    const flatCards = sections.flatMap(sec =>
+      sec.items.map(m => renderMatchCard(m, sec.isPlayed, teamMap))
+    );
+    box.innerHTML = `<div class="matches-grid">${flatCards.join("")}</div>`;
+  } else {
+    box.innerHTML = sections
+      .map(sec => {
+        const groupHead = state.calMatchday === "all"
+          ? `
+            <div class="cal-group-header">
+              <div class="cal-group-title">Journée ${sec.md}</div>
+              <span class="mc-badge ${sec.isPlayed ? "low" : "med"}">${sec.isPlayed ? "Résultats officiels" : "Affiches à venir"}</span>
+            </div>
+          `
+          : "";
+        return `
+          <div>
+            ${groupHead}
+            <div class="matches-grid">
+              ${sec.items.map(m => renderMatchCard(m, sec.isPlayed, teamMap)).join("")}
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+  }
+
+  box.querySelectorAll(".mc-team-btn[data-team]").forEach(btn => {
+    btn.onclick = () => selectClubAndOpen(btn.dataset.team);
+  });
 }
 
 /* Écouteurs d'événements */
@@ -705,16 +1015,33 @@ document.getElementById("duel-club-b").onchange = (e) => {
 
 document.getElementById("calendar-club-filter").onchange = (e) => {
   state.calClub = e.target.value;
+  // Quand un club précis est choisi, afficher toutes ses journées (J1–J8) rend la lecture immédiate.
+  if (state.calClub && state.calMatchday !== "all") {
+    state.calMatchday = "all";
+    renderCalendarMatchdays();
+  }
   renderCalendar();
 };
 
-document.querySelectorAll("#calendar-mode .pill-btn").forEach(btn => {
-  btn.onclick = () => {
-    state.calMode = btn.dataset.cal;
-    document.querySelectorAll("#calendar-mode .pill-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
+document.getElementById("calendar-sort").onchange = (e) => {
+  state.calSort = e.target.value;
+  renderCalendar();
+};
+
+document.getElementById("cal-prev-md").onclick = () => {
+  if (typeof state.calMatchday === "number" && state.calMatchday > 1) {
+    state.calMatchday -= 1;
+    renderCalendarMatchdays();
     renderCalendar();
-  };
-});
+  }
+};
+
+document.getElementById("cal-next-md").onclick = () => {
+  if (typeof state.calMatchday === "number" && state.calMatchday < state.totalMatchdays) {
+    state.calMatchday += 1;
+    renderCalendarMatchdays();
+    renderCalendar();
+  }
+};
 
 loadState();

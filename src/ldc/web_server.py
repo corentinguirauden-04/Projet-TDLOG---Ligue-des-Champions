@@ -65,18 +65,38 @@ def _get_manual_elo() -> dict[str, int]:
     return dict(ldc_data.DEFAULT_ELO)
 
 
-def _schedule_payload() -> dict:
-    """Construit la liste des matchs joués et restants avec leur numéro de journée."""
+def _schedule_payload(source: str) -> dict:
+    """Construit le calendrier (matchs joués + restants enrichis des probas et de l'importance)."""
     matches_per_day = max(1, len(ldc_data.TEAMS) // 2)
     cur_md = ldc_data.current_matchday()
     played = [
-        {"matchday": idx // matches_per_day + 1, "home": h, "away": a, "hg": int(hg), "ag": int(ag)}
+        {
+            "matchday": idx // matches_per_day + 1,
+            "home": h,
+            "away": a,
+            "hg": int(hg),
+            "ag": int(ag),
+            "winner": "home" if int(hg) > int(ag) else ("away" if int(ag) > int(hg) else "draw"),
+        }
         for idx, (h, a, hg, ag) in enumerate(ldc_data.PLAYED)
     ]
-    remaining = [
-        {"matchday": idx // matches_per_day + cur_md + 1, "home": h, "away": a}
-        for idx, (h, a) in enumerate(ldc_data.REMAINING)
-    ]
+
+    matches_json = OUTPUTS_DIR / source / "matchs_restants.json"
+    remaining: list[dict] | None = None
+    if matches_json.is_file():
+        try:
+            raw = json.loads(matches_json.read_text(encoding="utf-8"))
+            if isinstance(raw, list) and len(raw) == len(ldc_data.REMAINING):
+                remaining = raw
+        except Exception:
+            remaining = None
+
+    if remaining is None:
+        remaining = [
+            {"matchday": idx // matches_per_day + cur_md + 1, "home": h, "away": a}
+            for idx, (h, a) in enumerate(ldc_data.REMAINING)
+        ]
+
     return {"played": played, "remaining": remaining}
 
 
@@ -184,7 +204,7 @@ class LdcRequestHandler(BaseHTTPRequestHandler):
             requested = params.get("source", [None])[0]
             active = requested if requested in SOURCES else (available_ids[0] if available_ids else "clubelo")
             teams = _read_source_results(active) if active in available_ids else []
-            schedule = _schedule_payload()
+            schedule = _schedule_payload(active)
 
             self._send_json(
                 {
@@ -273,6 +293,7 @@ class LdcRequestHandler(BaseHTTPRequestHandler):
                 "n_sims": n_sims,
                 "sources": _source_status(),
                 "teams": _read_source_results(source),
+                "remaining": _schedule_payload(source)["remaining"],
                 "manual_elo": _get_manual_elo(),
             }
         )

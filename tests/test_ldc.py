@@ -230,12 +230,36 @@ class TestWebController(unittest.TestCase):
         self.assertEqual(state["active_source"], "clubelo")
         self.assertEqual(state["matchday"], 4)
         self.assertEqual(len(state["teams"]), 36)
+        self.assertEqual(len(state["played"]), len(data.PLAYED))
+        self.assertEqual(len(state["remaining"]), len(data.REMAINING))
+        self.assertIn(state["played"][0]["winner"], ("home", "draw", "away"))
+        first_rem = state["remaining"][0]
+        for key in ("p_home", "p_draw", "p_away", "home_imp", "away_imp"):
+            self.assertIn(key, first_rem)
+        self.assertAlmostEqual(
+            first_rem["p_home"] + first_rem["p_draw"] + first_rem["p_away"], 1.0, places=2
+        )
 
         bad_status, _ = self._dispatch_request("POST", "/api/simulate", {"source": "clubelo", "n_sims": 5})
         self.assertEqual(bad_status, 400)
 
         traversal_status, _ = self._dispatch_request("GET", "/outputs/../data/elo.json")
         self.assertEqual(traversal_status, 403)
+
+    def test_write_remaining_matches_json(self) -> None:
+        sim = simulation.simulate(n_sims=300, seed=42, elo=data.DEFAULT_ELO, elo_date="2026-11-22")
+        imp = simulation.match_importance(sim)
+        with tempfile.TemporaryDirectory() as tmp:
+            out_path = Path(tmp) / "matchs_restants.json"
+            pipeline.write_remaining_matches_json(sim, imp, out_path)
+            rows = json.loads(out_path.read_text(encoding="utf-8"))
+            self.assertEqual(len(rows), len(data.REMAINING))
+            for row in rows:
+                self.assertAlmostEqual(row["p_home"] + row["p_draw"] + row["p_away"], 1.0, places=3)
+                self.assertGreaterEqual(row["home_imp"], 0.0)
+                self.assertGreaterEqual(row["away_imp"], 0.0)
+                self.assertGreaterEqual(row["home_worst_rank"], row["home_best_rank"])
+                self.assertGreaterEqual(row["away_worst_rank"], row["away_best_rank"])
 
 
 if __name__ == "__main__":
