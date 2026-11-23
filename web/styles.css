@@ -961,6 +961,7 @@ tbody tr:hover {
 }
 
 .md-pill.played-md .md-dot { background: var(--top8); opacity: 0.7; }
+.md-pill.live-md .md-dot { background: var(--out); box-shadow: 0 0 8px rgba(255, 93, 143, 0.75); }
 .md-pill.upcoming-md .md-dot { background: var(--play); }
 .md-pill.all-md .md-dot { background: #6f82cf; }
 
@@ -972,9 +973,31 @@ tbody tr:hover {
   box-shadow: 0 3px 12px rgba(45, 226, 197, 0.22);
 }
 
+.md-pill.live-md.active {
+  border-color: var(--out);
+  box-shadow: 0 3px 12px rgba(255, 93, 143, 0.28);
+}
+
 .md-pill.upcoming-md.active {
   border-color: var(--play);
   box-shadow: 0 3px 12px rgba(255, 200, 87, 0.22);
+}
+
+.cal-sub-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 4px 0 10px;
+  font-family: "Outfit", sans-serif;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cal-sub-block + .cal-sub-block {
+  margin-top: 18px;
 }
 
 .cal-summary-bar {

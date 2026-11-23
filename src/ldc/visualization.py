@@ -61,10 +61,12 @@ def _format_fr_date(iso_date: str | None) -> str:
 
 
 def _matchday_date_label(sim: dict | None = None, elo_date: str | None = None) -> str:
-    """Construit le repère temporel dynamique 'après la journée n, en date du xxx'."""
-    journee = ldc_data.current_matchday()
+    """Construit le repère temporel dynamique (journée complète ou en cours + date Elo)."""
+    n_played = sim.get("n_played") if sim else None
+    n_remaining = len(sim["remaining"]) if sim and "remaining" in sim else None
+    progress = ldc_data.matchday_progress(n_played=n_played, n_remaining=n_remaining)
     resolved_date = elo_date or (sim.get("elo_date") if sim else None) or ldc_data.load_elo()[1]
-    return f"après la journée {journee}, en date du {_format_fr_date(resolved_date)}"
+    return f"{progress['label']}, en date du {_format_fr_date(resolved_date)}"
 
 
 def _new_fig(size: tuple[float, float]):

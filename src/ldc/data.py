@@ -194,16 +194,66 @@ REMAINING: list[tuple[str, str]] = [
 TEAMS: list[str] = sorted(DEFAULT_ELO)
 
 
-def current_matchday() -> int:
-    """Nombre de journées complètes déjà disputées (18 matchs par journée pour 36 clubs)."""
-    matches_per_day = max(1, len(TEAMS) // 2)
-    return len(PLAYED) // matches_per_day
+def matches_per_matchday() -> int:
+    """Nombre de matchs par journée complète (18 pour 36 clubs)."""
+    return max(1, len(TEAMS) // 2)
 
 
-def total_matchdays() -> int:
+def current_matchday(played: list[tuple[str, str, int, int]] | None = None) -> int:
+    """Nombre de journées complètes déjà disputées."""
+    p = PLAYED if played is None else played
+    return len(p) // matches_per_matchday()
+
+
+def total_matchdays(
+    played: list[tuple[str, str, int, int]] | None = None,
+    remaining: list[tuple[str, str]] | None = None,
+) -> int:
     """Nombre total de journées de la phase de ligue."""
-    matches_per_day = max(1, len(TEAMS) // 2)
-    return (len(PLAYED) + len(REMAINING)) // matches_per_day
+    p = PLAYED if played is None else played
+    r = REMAINING if remaining is None else remaining
+    return (len(p) + len(r)) // matches_per_matchday()
+
+
+def matchday_for_played(idx: int) -> int:
+    """Numéro de journée (1..8) d'un match joué d'indice `idx` dans `PLAYED`."""
+    return idx // matches_per_matchday() + 1
+
+
+def matchday_for_remaining(idx: int, n_played: int | None = None) -> int:
+    """Numéro de journée (1..8) d'un match restant d'indice `idx`, même en cours de journée."""
+    base = len(PLAYED) if n_played is None else n_played
+    return (base + idx) // matches_per_matchday() + 1
+
+
+def matchday_progress(
+    n_played: int | None = None,
+    n_remaining: int | None = None,
+) -> dict:
+    """Synthèse dynamique de l'avancement des journées (complète ou en cours)."""
+    mpd = matches_per_matchday()
+    played_count = len(PLAYED) if n_played is None else int(n_played)
+    rem_count = len(REMAINING) if n_remaining is None else int(n_remaining)
+    completed = played_count // mpd
+    played_in_current = played_count % mpd
+    in_progress = (completed + 1) if played_in_current > 0 else None
+    total = (played_count + rem_count) // mpd
+
+    if in_progress is not None:
+        label = f"journée {in_progress} en cours ({played_in_current}/{mpd})"
+    elif completed == 0:
+        label = "avant la 1re journée"
+    else:
+        label = f"après la journée {completed}"
+
+    return {
+        "completed": completed,
+        "in_progress": in_progress,
+        "played_in_current": played_in_current,
+        "matches_per_day": mpd,
+        "total": total,
+        "label": label,
+    }
 
 
 def validate_elo_map(raw_elo: object) -> tuple[dict[str, int] | None, str | None]:
@@ -253,12 +303,20 @@ def write_elo_json(
     temp_path.replace(path)
 
 
-def check() -> bool:
-    """Vérifie la cohérence du calendrier : 144 matchs, 8 par équipe (4 dom / 4 ext), pas de doublon."""
-    all_matches = [(h, a) for h, a, _, _ in PLAYED] + REMAINING
-    assert len(PLAYED) == 72, len(PLAYED)
-    assert len(REMAINING) == 72, len(REMAINING)
+def check(
+    played: list[tuple[str, str, int, int]] | None = None,
+    remaining: list[tuple[str, str]] | None = None,
+) -> bool:
+    """Vérifie la cohérence du calendrier : 144 matchs, 8 par équipe (4 dom / 4 ext), pas de doublon.
+
+    Supporte aussi bien une journée terminée qu'une journée partiellement jouée.
+    """
+    p = PLAYED if played is None else played
+    r = REMAINING if remaining is None else remaining
+    all_matches = [(h, a) for h, a, _, _ in p] + list(r)
+    mpd = matches_per_matchday()
     assert len(TEAMS) == 36
+    assert len(all_matches) == 144, (len(p), len(r))
     for team in TEAMS:
         home = sum(h == team for h, _ in all_matches)
         away = sum(a == team for _, a in all_matches)
@@ -267,6 +325,11 @@ def check() -> bool:
     assert len(pairs) == 144, len(pairs)
     for h, a in all_matches:
         assert h in DEFAULT_ELO and a in DEFAULT_ELO, (h, a)
+    # Chaque tranche de 18 matchs correspond à une journée complète (36 équipes distinctes).
+    for start in range(0, len(all_matches), mpd):
+        block = all_matches[start:start + mpd]
+        teams_in_block = {t for pair in block for t in pair}
+        assert len(teams_in_block) == len(TEAMS), (start // mpd + 1, len(teams_in_block))
     return True
 
 

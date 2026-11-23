@@ -68,8 +68,7 @@ def write_remaining_matches_json(
     path: Path,
 ) -> None:
     """Exporte pour chaque match restant ses probabilités (1 / N / 2) et son importance pour les 2 clubs."""
-    matches_per_day = max(1, len(ldc_data.TEAMS) // 2)
-    cur_md = ldc_data.current_matchday()
+    n_played = int(sim.get("n_played", len(ldc_data.PLAYED)))
     outcomes = sim["match_outcomes"]
 
     # Indexe rapidement l'importance de chaque match par (équipe, home, away).
@@ -90,7 +89,7 @@ def write_remaining_matches_json(
         a_imp = imp_lookup.get((away, home, away), {})
         rows.append(
             {
-                "matchday": m_idx // matches_per_day + cur_md + 1,
+                "matchday": ldc_data.matchday_for_remaining(m_idx, n_played=n_played),
                 "home": home,
                 "away": away,
                 "p_home": round(p_home, 4),

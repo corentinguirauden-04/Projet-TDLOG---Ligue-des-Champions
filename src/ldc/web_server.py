@@ -65,20 +65,24 @@ def _get_manual_elo() -> dict[str, int]:
     return dict(ldc_data.DEFAULT_ELO)
 
 
-def _schedule_payload(source: str) -> dict:
-    """Construit le calendrier (matchs joués + restants enrichis des probas et de l'importance)."""
-    matches_per_day = max(1, len(ldc_data.TEAMS) // 2)
-    cur_md = ldc_data.current_matchday()
+def _schedule_payload(
+    source: str,
+    played_src: list[tuple[str, str, int, int]] | None = None,
+    remaining_src: list[tuple[str, str]] | None = None,
+) -> dict:
+    """Construit le calendrier (matchs joués + restants enrichis), y compris en cours de journée."""
+    p = ldc_data.PLAYED if played_src is None else played_src
+    r = ldc_data.REMAINING if remaining_src is None else remaining_src
     played = [
         {
-            "matchday": idx // matches_per_day + 1,
+            "matchday": ldc_data.matchday_for_played(idx),
             "home": h,
             "away": a,
             "hg": int(hg),
             "ag": int(ag),
             "winner": "home" if int(hg) > int(ag) else ("away" if int(ag) > int(hg) else "draw"),
         }
-        for idx, (h, a, hg, ag) in enumerate(ldc_data.PLAYED)
+        for idx, (h, a, hg, ag) in enumerate(p)
     ]
 
     matches_json = OUTPUTS_DIR / source / "matchs_restants.json"
@@ -86,15 +90,19 @@ def _schedule_payload(source: str) -> dict:
     if matches_json.is_file():
         try:
             raw = json.loads(matches_json.read_text(encoding="utf-8"))
-            if isinstance(raw, list) and len(raw) == len(ldc_data.REMAINING):
+            if (
+                isinstance(raw, list)
+                and len(raw) == len(r)
+                and all((item.get("home"), item.get("away")) == pair for item, pair in zip(raw, r))
+            ):
                 remaining = raw
         except Exception:
             remaining = None
 
     if remaining is None:
         remaining = [
-            {"matchday": idx // matches_per_day + cur_md + 1, "home": h, "away": a}
-            for idx, (h, a) in enumerate(ldc_data.REMAINING)
+            {"matchday": ldc_data.matchday_for_remaining(idx, n_played=len(p)), "home": h, "away": a}
+            for idx, (h, a) in enumerate(r)
         ]
 
     return {"played": played, "remaining": remaining}
@@ -113,7 +121,7 @@ def _read_source_results(source: str) -> list[dict]:
         for raw in csv.DictReader(f, delimiter=";"):
             team = raw["equipe"]
             rank_probs = [float(raw[f"probabilite_place_{p}"]) for p in range(1, 37)]
-            cur = current_by_team.get(team, {"rank": 0, "pts": 0, "gd": 0, "gf": 0, "ga": 0})
+            cur = current_by_team.get(team, {"rank": 0, "played": 0, "pts": 0, "gd": 0, "gf": 0, "ga": 0})
             rows.append(
                 {
                     "team": team,
@@ -129,6 +137,7 @@ def _read_source_results(source: str) -> list[dict]:
                     "most_likely_rank": int(max(range(36), key=lambda i: rank_probs[i]) + 1),
                     "rank_probs": rank_probs,
                     "cur_rank": int(cur["rank"]),
+                    "cur_played": int(cur.get("played", ldc_data.current_matchday())),
                     "cur_pts": int(cur["pts"]),
                     "cur_gd": int(cur["gd"]),
                     "cur_gf": int(cur["gf"]),
@@ -205,6 +214,7 @@ class LdcRequestHandler(BaseHTTPRequestHandler):
             active = requested if requested in SOURCES else (available_ids[0] if available_ids else "clubelo")
             teams = _read_source_results(active) if active in available_ids else []
             schedule = _schedule_payload(active)
+            progress = ldc_data.matchday_progress()
 
             self._send_json(
                 {
@@ -212,8 +222,12 @@ class LdcRequestHandler(BaseHTTPRequestHandler):
                     "active_source": active,
                     "output_folder": active,
                     "available": active in available_ids,
-                    "matchday": ldc_data.current_matchday(),
-                    "total_matchdays": ldc_data.total_matchdays(),
+                    "matchday": progress["completed"],
+                    "matchday_in_progress": progress["in_progress"],
+                    "played_in_current_md": progress["played_in_current"],
+                    "matches_per_day": progress["matches_per_day"],
+                    "matchday_label": progress["label"],
+                    "total_matchdays": progress["total"],
                     "teams": teams,
                     "played": schedule["played"],
                     "remaining": schedule["remaining"],

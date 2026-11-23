@@ -4,6 +4,10 @@ const state = {
   outputFolder: "clubelo",
   available: true,
   matchday: 4,
+  matchdayInProgress: null,
+  playedInCurrentMd: 0,
+  matchesPerDay: 18,
+  matchdayLabel: "",
   totalMatchdays: 8,
   teams: [],
   played: [],
@@ -81,16 +85,24 @@ async function loadState(source = null) {
   state.outputFolder = data.output_folder;
   state.available = data.available;
   state.matchday = data.matchday ?? 4;
+  state.matchdayInProgress = data.matchday_in_progress ?? null;
+  state.playedInCurrentMd = data.played_in_current_md ?? 0;
+  state.matchesPerDay = data.matches_per_day ?? 18;
+  state.matchdayLabel = data.matchday_label || `après la ${state.matchday}e journée`;
   state.totalMatchdays = data.total_matchdays ?? 8;
   state.teams = data.teams || [];
 
   const brandSub = document.getElementById("brand-matchday-sub");
   if (brandSub) {
-    brandSub.textContent = `Saison 2026-2027 · Projections après la ${state.matchday}e journée`;
+    brandSub.textContent = state.matchdayInProgress
+      ? `Saison 2026-2027 · Projections — Journée ${state.matchdayInProgress} en cours (${state.playedInCurrentMd}/${state.matchesPerDay})`
+      : `Saison 2026-2027 · Projections après la ${state.matchday}e journée`;
   }
   const thRank = document.getElementById("th-cur-rank");
   if (thRank) {
-    thRank.textContent = `Rang J${state.matchday}`;
+    thRank.textContent = state.matchdayInProgress
+      ? `Rang (J${state.matchdayInProgress} en cours)`
+      : `Rang J${state.matchday}`;
   }
   state.played = data.played || [];
   state.remaining = data.remaining || [];
@@ -111,7 +123,7 @@ async function loadState(source = null) {
   }
 
   if (state.calMatchday === null) {
-    state.calMatchday = Math.min(state.matchday + 1, state.totalMatchdays);
+    state.calMatchday = state.matchdayInProgress ?? Math.min(state.matchday + 1, state.totalMatchdays);
   }
 
   renderSourceButtons();
@@ -576,10 +588,16 @@ function renderCalendarMatchdays() {
 
   const buttons = [];
   for (let md = 1; md <= state.totalMatchdays; md++) {
-    const isPlayed = md <= state.matchday;
+    const playedCnt = state.played.filter(m => m.matchday === md).length;
+    const remCnt = state.remaining.filter(m => m.matchday === md).length;
+    const isLive = playedCnt > 0 && remCnt > 0;
+    const isPlayed = playedCnt > 0 && remCnt === 0;
     const isActive = state.calMatchday === md;
-    const cls = `md-pill ${isPlayed ? "played-md" : "upcoming-md"}${isActive ? " active" : ""}`;
-    const tip = isPlayed ? `Journée ${md} (terminée)` : `Journée ${md} (à venir)`;
+    const kindCls = isLive ? "live-md" : (isPlayed ? "played-md" : "upcoming-md");
+    const cls = `md-pill ${kindCls}${isActive ? " active" : ""}`;
+    const tip = isLive
+      ? `Journée ${md} (en cours : ${playedCnt}/${playedCnt + remCnt} joués)`
+      : (isPlayed ? `Journée ${md} (terminée)` : `Journée ${md} (à venir)`);
     buttons.push(
       `<button type="button" class="${cls}" data-md="${md}" title="${tip}" role="tab" aria-selected="${isActive}">` +
       `<span class="md-dot"></span>J${md}</button>`
@@ -592,7 +610,7 @@ function renderCalendarMatchdays() {
   const allActive = state.calMatchday === "all";
   buttons.push(`<span class="md-sep" aria-hidden="true"></span>`);
   buttons.push(
-    `<button type="button" class="md-pill all-md${allActive ? " active" : ""}" data-md="all" title="Afficher les 8 journées" role="tab" aria-selected="${allActive}">` +
+    `<button type="button" class="md-pill all-md${allActive ? " active" : ""}" data-md="all" title="Afficher les ${state.totalMatchdays} journées" role="tab" aria-selected="${allActive}">` +
     `<span class="md-dot"></span>Toutes</button>`
   );
 
@@ -766,34 +784,41 @@ function renderCalendar() {
   const clubFilter = state.calClub;
   const matchClub = m => !clubFilter || m.home === clubFilter || m.away === clubFilter;
 
-  const isSinglePlayed = typeof state.calMatchday === "number" && state.calMatchday <= state.matchday;
-  if (sortSel) sortSel.disabled = isSinglePlayed;
-
   const sections = [];
   let totalShown = 0;
-  let hasUpcoming = false;
+  let totalPlayedShown = 0;
+  let totalUpcomingShown = 0;
 
   const matchdaysToShow = state.calMatchday === "all"
     ? Array.from({ length: state.totalMatchdays }, (_, i) => i + 1)
     : [state.calMatchday];
 
   for (const md of matchdaysToShow) {
-    const isPlayed = md <= state.matchday;
-    const sourceList = isPlayed ? state.played : state.remaining;
-    let items = sourceList.filter(m => m.matchday === md && matchClub(m));
-    if (!isPlayed) {
-      items = sortUpcomingMatches(items);
-      if (items.length > 0) hasUpcoming = true;
-    }
-    if (items.length === 0) continue;
-    totalShown += items.length;
-    sections.push({ md, isPlayed, items });
+    const playedItems = state.played.filter(m => m.matchday === md && matchClub(m));
+    const upcomingItems = sortUpcomingMatches(
+      state.remaining.filter(m => m.matchday === md && matchClub(m))
+    );
+    if (playedItems.length === 0 && upcomingItems.length === 0) continue;
+    totalPlayedShown += playedItems.length;
+    totalUpcomingShown += upcomingItems.length;
+    totalShown += playedItems.length + upcomingItems.length;
+    sections.push({ md, playedItems, upcomingItems });
   }
 
+  const hasUpcoming = totalUpcomingShown > 0;
+  if (sortSel) sortSel.disabled = !hasUpcoming;
+
   if (summary) {
-    const mdLabel = state.calMatchday === "all"
-      ? `Toutes les journées (J1–J${state.totalMatchdays})`
-      : `Journée ${state.calMatchday} (${state.calMatchday <= state.matchday ? "terminée" : "à venir"})`;
+    let mdLabel;
+    if (state.calMatchday === "all") {
+      mdLabel = `Toutes les journées (J1–J${state.totalMatchdays})`;
+    } else if (totalPlayedShown > 0 && totalUpcomingShown > 0) {
+      mdLabel = `Journée ${state.calMatchday} (en cours : ${totalPlayedShown} terminés · ${totalUpcomingShown} à venir)`;
+    } else if (totalPlayedShown > 0) {
+      mdLabel = `Journée ${state.calMatchday} (terminée)`;
+    } else {
+      mdLabel = `Journée ${state.calMatchday} (à venir)`;
+    }
     const clubLabel = clubFilter ? ` · Filtre : ${clubFilter}` : "";
     const countLabel = `${totalShown} match${totalShown > 1 ? "s" : ""}`;
     const legendHtml = hasUpcoming
@@ -822,26 +847,55 @@ function renderCalendar() {
 
   // Vue compacte 2 colonnes quand on affiche le parcours complet (J1–J8) d'un seul club.
   if (state.calMatchday === "all" && clubFilter) {
-    const flatCards = sections.flatMap(sec =>
-      sec.items.map(m => renderMatchCard(m, sec.isPlayed, teamMap))
-    );
+    const flatCards = sections.flatMap(sec => [
+      ...sec.playedItems.map(m => renderMatchCard(m, true, teamMap)),
+      ...sec.upcomingItems.map(m => renderMatchCard(m, false, teamMap)),
+    ]);
     box.innerHTML = `<div class="matches-grid">${flatCards.join("")}</div>`;
   } else {
     box.innerHTML = sections
       .map(sec => {
+        const isLive = sec.playedItems.length > 0 && sec.upcomingItems.length > 0;
+        const isOnlyPlayed = sec.playedItems.length > 0 && sec.upcomingItems.length === 0;
+        const badgeCls = isLive ? "high" : (isOnlyPlayed ? "low" : "med");
+        const badgeLabel = isLive
+          ? `En cours (${sec.playedItems.length}/${sec.playedItems.length + sec.upcomingItems.length})`
+          : (isOnlyPlayed ? "Résultats officiels" : "Affiches à venir");
         const groupHead = state.calMatchday === "all"
           ? `
             <div class="cal-group-header">
               <div class="cal-group-title">Journée ${sec.md}</div>
-              <span class="mc-badge ${sec.isPlayed ? "low" : "med"}">${sec.isPlayed ? "Résultats officiels" : "Affiches à venir"}</span>
+              <span class="mc-badge ${badgeCls}">${badgeLabel}</span>
             </div>
           `
           : "";
+
+        if (isLive) {
+          return `
+            <div>
+              ${groupHead}
+              <div class="cal-sub-block">
+                <div class="cal-sub-header"><span>Affiches à venir (${sec.upcomingItems.length})</span></div>
+                <div class="matches-grid">
+                  ${sec.upcomingItems.map(m => renderMatchCard(m, false, teamMap)).join("")}
+                </div>
+              </div>
+              <div class="cal-sub-block">
+                <div class="cal-sub-header"><span>Résultats déjà joués (${sec.playedItems.length})</span></div>
+                <div class="matches-grid">
+                  ${sec.playedItems.map(m => renderMatchCard(m, true, teamMap)).join("")}
+                </div>
+              </div>
+            </div>
+          `;
+        }
+
+        const items = isOnlyPlayed ? sec.playedItems : sec.upcomingItems;
         return `
           <div>
             ${groupHead}
             <div class="matches-grid">
-              ${sec.items.map(m => renderMatchCard(m, sec.isPlayed, teamMap)).join("")}
+              ${items.map(m => renderMatchCard(m, isOnlyPlayed, teamMap)).join("")}
             </div>
           </div>
         `;

@@ -75,10 +75,10 @@ def lambdas_home(home: str, away: str, elo: dict[str, int] | None = None):
 # 2. CONSTRUCTION DES STATISTIQUES ET CLASSEMENT
 # ----------------------------------------------------------------------------------------------
 
-def _table_from_matches(matches):
+def _table_from_matches(matches, n_sims: int | None = None):
     """Cumule points, buts et victoires de toutes les équipes sur l'ensemble des scénarios."""
-    n_sims = matches[0][2].shape[0]
-    zeros = lambda: np.zeros((n_sims, N_TEAMS), dtype=np.int32)
+    count = n_sims if n_sims is not None else (matches[0][2].shape[0] if matches else 1)
+    zeros = lambda: np.zeros((count, N_TEAMS), dtype=np.int32)
     pts, gf, ga, agf, wins, awins = zeros(), zeros(), zeros(), zeros(), zeros(), zeros()
 
     for h, a, hg, ag in matches:
@@ -123,13 +123,18 @@ def _rank(stats, rng):
 def current_table(played=PLAYED) -> list[dict]:
     """Construit le classement réel actuel à partir des seuls matchs déjà joués."""
     matches = [(IDX[h], IDX[a], np.array([hg]), np.array([ag])) for h, a, hg, ag in played]
-    stats = _table_from_matches(matches)
+    stats = _table_from_matches(matches, n_sims=1)
     ranks = _rank(stats, np.random.default_rng(0))[0]
+    played_counts = {team: 0 for team in TEAMS}
+    for h, a, _, _ in played:
+        played_counts[h] += 1
+        played_counts[a] += 1
 
     rows = [
         dict(
             team=team,
             rank=int(ranks[IDX[team]]),
+            played=played_counts[team],
             pts=int(stats["pts"][0, IDX[team]]),
             gf=int(stats["gf"][0, IDX[team]]),
             ga=int(stats["ga"][0, IDX[team]]),
@@ -195,7 +200,7 @@ def simulate(
         match_outcomes[:, m_idx] = np.where(hg > ag, 2, np.where(hg == ag, 1, 0))
         matches.append((ih, ia, hg, ag))
 
-    stats = _table_from_matches(matches)
+    stats = _table_from_matches(matches, n_sims=n_sims)
     ranks = _rank(stats, rng)
 
     final_elo = elo_now.astype(np.float32) if elo_now is not None else base_elo.astype(np.float32)
@@ -206,6 +211,7 @@ def simulate(
         elo=final_elo,
         elo_date=elo_date,
         teams=TEAMS,
+        n_played=len(played),
         remaining=remaining_list,
         match_outcomes=match_outcomes,
     )

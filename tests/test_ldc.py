@@ -261,6 +261,77 @@ class TestWebController(unittest.TestCase):
                 self.assertGreaterEqual(row["home_worst_rank"], row["home_best_rank"])
                 self.assertGreaterEqual(row["away_worst_rank"], row["away_best_rank"])
 
+    def test_partial_matchday_nov24_played_nov25_remaining(self) -> None:
+        """Simule les 9 matchs du 24 novembre (J5) joués et laisse les 9 du 25 novembre à venir."""
+        rng = np.random.default_rng(20261124)
+        nov24_fixtures = data.REMAINING[:9]
+        nov25_and_rest = data.REMAINING[9:]
+
+        simulated_nov24: list[tuple[str, str, int, int]] = []
+        for home, away in nov24_fixtures:
+            lh, la = simulation.lambdas_home(home, away, elo=data.DEFAULT_ELO)
+            simulated_nov24.append((home, away, int(rng.poisson(float(lh))), int(rng.poisson(float(la)))))
+
+        played_81 = list(data.PLAYED) + simulated_nov24
+        self.assertEqual(len(played_81), 81)
+        self.assertEqual(len(nov25_and_rest), 63)
+
+        # 1. Invariants calendrier et statut d'avancement.
+        self.assertTrue(data.check(played=played_81, remaining=nov25_and_rest))
+        progress = data.matchday_progress(n_played=len(played_81), n_remaining=len(nov25_and_rest))
+        self.assertEqual(progress["completed"], 4)
+        self.assertEqual(progress["in_progress"], 5)
+        self.assertEqual(progress["played_in_current"], 9)
+        self.assertEqual(progress["total"], 8)
+        self.assertEqual(progress["label"], "journée 5 en cours (9/18)")
+
+        # 2. Classement intermédiaire : 18 équipes à 5 matchs joués, 18 à 4 matchs joués.
+        table = simulation.current_table(played=played_81)
+        self.assertEqual(sum(r["played"] == 5 for r in table), 18)
+        self.assertEqual(sum(r["played"] == 4 for r in table), 18)
+
+        # 3. Simulation Monte Carlo + indicateurs + export matchs restants.
+        sim = simulation.simulate(
+            n_sims=400,
+            seed=42,
+            elo=data.DEFAULT_ELO,
+            elo_date="2026-11-24",
+            played=played_81,
+            remaining=nov25_and_rest,
+        )
+        self.assertEqual(sim["n_played"], 81)
+        dist = simulation.rank_distribution(sim)
+        np.testing.assert_allclose(dist.sum(axis=1), 1.0, atol=1e-9)
+        imp = simulation.match_importance(sim)
+        self.assertEqual(len(imp["PSG"]), 63)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            matches_json = tmp_dir / "matchs_restants.json"
+            pipeline.write_remaining_matches_json(sim, imp, matches_json)
+            rows = json.loads(matches_json.read_text(encoding="utf-8"))
+            self.assertEqual(len(rows), 63)
+
+            # Répartition exacte des journées : 9 restants en J5 (25 nov), puis 18 en J6, J7, J8.
+            md_counts: dict[int, int] = {}
+            for row in rows:
+                md_counts[row["matchday"]] = md_counts.get(row["matchday"], 0) + 1
+            self.assertEqual(md_counts, {5: 9, 6: 18, 7: 18, 8: 18})
+
+            # 4. Payload calendrier web : J5 fusionne bien 9 joués + 9 à venir.
+            schedule = web_server._schedule_payload("clubelo", played_src=played_81, remaining_src=nov25_and_rest)
+            self.assertEqual(sum(m["matchday"] == 5 for m in schedule["played"]), 9)
+            self.assertEqual(sum(m["matchday"] == 5 for m in schedule["remaining"]), 9)
+            self.assertEqual(sum(m["matchday"] == 6 for m in schedule["remaining"]), 18)
+
+            # 5. Libellé dynamique et rendu des visuels sans erreur.
+            self.assertIn("journée 5 en cours (9/18)", visualization._matchday_date_label(sim))
+            visualization.team_card("Arsenal", sim, table, tmp_dir / "arsenal.png")
+            visualization.team_points_card("PSG", sim, table, tmp_dir / "psg_pts.png")
+            visualization.overview(sim, table, tmp_dir / "overview.png")
+            for fname in ("arsenal.png", "psg_pts.png", "overview.png"):
+                self.assertGreater((tmp_dir / fname).stat().st_size, 1000)
+
 
 if __name__ == "__main__":
     unittest.main()
