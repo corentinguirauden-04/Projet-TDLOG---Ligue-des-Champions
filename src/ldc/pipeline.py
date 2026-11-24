@@ -135,10 +135,10 @@ def _prepare_elo_source(
         )
         return 0
 
-    if source == "beyondelo" and no_refresh and ELO_FILE.is_file():
+    if no_refresh and ELO_FILE.is_file():
         try:
             current = json.loads(ELO_FILE.read_text(encoding="utf-8"))
-            if current.get("source") == "beyondelo":
+            if current.get("source") == source:
                 return 0
         except Exception:
             pass
@@ -157,8 +157,12 @@ def run_pipeline(
     no_refresh: bool = False,
     elo_file: Path | None = None,
     seed: int = DEFAULT_SEED,
+    played: list[tuple[str, str, int, int]] | None = None,
+    remaining: list[tuple[str, str]] | None = None,
 ) -> int:
     """Exécute toute la chaîne : Elo -> vérification -> simulation -> graphiques & CSV."""
+    active_played = list(ldc_data.PLAYED if played is None else played)
+    active_remaining = list(ldc_data.REMAINING if remaining is None else remaining)
     if n_sims <= 0:
         print("Erreur : le nombre de simulations doit être strictement positif.", file=sys.stderr)
         return 2
@@ -167,7 +171,7 @@ def run_pipeline(
     if status != 0:
         return status
 
-    ldc_data.check()
+    ldc_data.check(played=active_played, remaining=active_remaining)
     elo_map, elo_date = ldc_data.load_elo()
 
     output_dir = OUTPUTS_DIR / source
@@ -180,14 +184,21 @@ def run_pipeline(
         f"Lancement de {n_sims:,} simulations ({source}) "
         f"pour {len(ldc_data.TEAMS)} équipes...".replace(",", " ")
     )
-    sim = sim_engine.simulate(n_sims=n_sims, seed=seed, elo=elo_map, elo_date=elo_date)
+    sim = sim_engine.simulate(
+        n_sims=n_sims,
+        seed=seed,
+        elo=elo_map,
+        elo_date=elo_date,
+        played=active_played,
+        remaining=active_remaining,
+    )
 
     # Pré-calculs effectués une seule fois puis injectés dans toutes les fonctions de tracé.
     rank_dist = sim_engine.rank_distribution(sim)
     qualifications = sim_engine.qualification_probs(sim, rank_dist=rank_dist)
     importance = sim_engine.match_importance(sim)
     pts_by_rank = sim_engine.points_by_position(sim)
-    current_table = sim_engine.current_table()
+    current_table = sim_engine.current_table(played=active_played)
 
     for index, team in enumerate(ldc_data.TEAMS, start=1):
         team_dir_name = safe_filename(team)
