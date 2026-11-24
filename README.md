@@ -69,7 +69,7 @@ Seuls **NumPy** et **Matplotlib** sont nécessaires (la CLI, le parsing HTML/HTT
 python -m pip install -r requirements.txt
 ```
 
-> **Variable d'environnement optionnelle :** la clé API beyondELO peut être surchargée via `BEYONDELO_API_KEY` (une clé par défaut est définie dans `src/ldc/config.py`).
+> **Variables d'environnement :** définir `BEYONDELO_API_KEY` pour utiliser beyondELO et `FOOTBALL_DATA_API_TOKEN` pour synchroniser les résultats. Les clés ne sont jamais stockées dans le code.
 
 ---
 
@@ -168,7 +168,7 @@ Pour la conserver entre les sessions, utiliser `setx FOOTBALL_DATA_API_TOKEN "VO
 puis ouvrir un nouveau terminal. Ne jamais ajouter le jeton à un fichier suivi par Git.
 
 Pour utiliser aussi beyondELO, définir séparément `BEYONDELO_API_KEY` dans l'environnement.
-Aucune clé API ne doit être inscrite en dur dans `src/ldc/config.py`.
+Aucune clé API ne doit être inscrite en dur dans `src/ldc/config.py`. Si une ancienne clé a déjà été publiée dans Git, il faut la révoquer et en générer une nouvelle : supprimer le texte du dernier commit ne l'efface pas de l'historique Git.
 
 ### Fonctionnement
 
@@ -232,4 +232,4 @@ Deux polynômes par morceaux (`lam_home(W)` et `lam_away(W)`) convertissent `W` 
 - **Indépendance des buts :** les buts domicile et extérieur suivent deux lois de Poisson indépendantes (pas de correction de Dixon-Coles sur les petits scores).
 - **Elo constant durant la simulation :** conserver l'Elo fixe évite tout biais lié à l'ordre des matchs simultanés d'une même journée, au prix de ne pas modéliser une éventuelle dynamique de forme en cours de fin de phase.
 - **Départage :** points, différence de buts, buts marqués, buts à l'extérieur, victoires, victoires à l'extérieur puis tirage aléatoire (les critères UEFA secondaires comme les points des adversaires ou le fair-play ne sont pas modélisés).
-- **Calendrier manuel :** après chaque nouvelle journée, actualiser `PLAYED` et `REMAINING` dans `src/ldc/data.py` puis vérifier avec `python -m unittest discover -s tests -v`.
+- **Mode sans fournisseur :** si aucune clé football-data.org n'est configurée, le projet conserve les listes statiques `PLAYED` et `REMAINING` de `src/ldc/data.py`. Avec le jeton, les scores terminés sont synchronisés automatiquement.
