@@ -1014,7 +1014,7 @@ document.getElementById("reset-default-elo-btn").onclick = async () => {
 async function triggerSimulation(customElo = null) {
   const btn = document.getElementById("run-sim-btn");
   const saveBtn = document.getElementById("save-manual-elo-btn");
-  const nSims = parseInt(document.getElementById("n-sims").value, 10) || 250000;
+  const nSims = parseInt(document.getElementById("n-sims").value, 10) || 500000;
   btn.disabled = true;
   saveBtn.disabled = true;
   setStatus(`Calcul de ${nSims.toLocaleString("fr-FR")} scénarios en cours...`);
