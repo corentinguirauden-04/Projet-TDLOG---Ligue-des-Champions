@@ -38,6 +38,8 @@ from ldc.config import (
 
 # Sérialise les recalculs pour éviter les accès concurrents sur data/elo.json et outputs/.
 _SIM_LOCK = threading.Lock()
+_AUTO_SIMULATED_SIGNATURES: dict[str, str] = {}
+_AUTO_SIMULATION_ERRORS: dict[str, str] = {}
 _STATIC_ASSETS = {"/styles.css": "styles.css", "/app.js": "app.js"}
 
 
