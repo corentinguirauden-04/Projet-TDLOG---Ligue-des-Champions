@@ -27,6 +27,8 @@ const state = {
   calSort: "order",
   calClub: "",
   cacheBust: Date.now(),
+  projectionVersion: null,
+  liveSync: null,
 };
 
 const frenchClubs = new Set(["PSG", "Lille", "Lens"]);
@@ -57,6 +59,28 @@ function setStatus(msg, kind = "") {
   el.className = "toast-status" + (kind ? ` ${kind}` : "");
 }
 
+function renderLiveSyncStatus() {
+  const el = document.getElementById("live-sync-status");
+  if (!el) return;
+  const sync = state.liveSync;
+  if (!sync || !sync.configured) {
+    el.textContent = "Synchronisation des scores désactivée : clé API football-data.org manquante.";
+    el.className = "brand-sub live-sync-status muted";
+    return;
+  }
+  if (!sync.connected) {
+    el.textContent = `API des résultats indisponible — dernier état conservé.${sync.error ? " " + sync.error : ""}`;
+    el.className = "brand-sub live-sync-status warning";
+    return;
+  }
+  const checkedAt = sync.last_checked_at
+    ? new Date(sync.last_checked_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : "—";
+  const liveLabel = sync.live_matches > 0 ? ` · ${sync.live_matches} match(s) en cours` : "";
+  el.textContent = `Scores vérifiés à ${checkedAt} · contrôle toutes les ${sync.poll_seconds || 60} s${liveLabel}`;
+  el.className = "brand-sub live-sync-status ok";
+}
+
 function openLightbox(src) {
   const lb = document.getElementById("lightbox");
   document.getElementById("lightbox-img").src = src;
@@ -83,6 +107,13 @@ async function loadState(source = null) {
   const query = source ? `?source=${encodeURIComponent(source)}` : "";
   const res = await fetch(`/api/state${query}`);
   const data = await res.json();
+
+  if (state.projectionVersion !== null && data.projection_version !== state.projectionVersion) {
+    state.cacheBust = Date.now();
+  }
+  state.projectionVersion = data.projection_version ?? null;
+  state.liveSync = data.live_sync || null;
+  renderLiveSyncStatus();
 
   state.sources = data.sources;
   state.activeSource = data.active_source;
@@ -713,6 +744,34 @@ function renderMatchCard(m, isPlayed, teamMap, focusTeam = null) {
     `;
   }
 
+  const matchStatus = String(m.status || "").toUpperCase();
+  if (["IN_PLAY", "PAUSED", "LIVE"].includes(matchStatus)) {
+    const hasLiveScore = Number.isInteger(m.score_home) && Number.isInteger(m.score_away);
+    const liveScore = hasLiveScore ? `${m.score_home} - ${m.score_away}` : "En cours";
+    const liveLabel = matchStatus === "PAUSED" ? "Mi-temps" : "En direct";
+    return `
+      <article class="match-card live-match">
+        <div class="mc-head">
+          <span class="mc-md-tag">Journée ${m.matchday} · ${liveLabel}</span>
+          <span class="mc-badge high">EN DIRECT</span>
+        </div>
+        <div class="mc-teams">
+          <div class="mc-team home">
+            <button type="button" class="mc-team-btn" data-team="${m.home}">${m.home}</button>
+            ${renderTeamMeta(m.home, teamMap)}
+          </div>
+          <div class="mc-center">
+            <span class="match-score live-score">${liveScore}</span>
+          </div>
+          <div class="mc-team away">
+            <button type="button" class="mc-team-btn" data-team="${m.away}">${m.away}</button>
+            ${renderTeamMeta(m.away, teamMap)}
+          </div>
+        </div>
+      </article>
+    `;
+  }
+
   const hasStats = typeof m.p_home === "number" && typeof m.home_imp === "number";
   const avgImp = hasStats ? (m.home_imp + m.away_imp) / 2 : 0;
   const tier = hasStats ? stakesTier(avgImp) : { cls: "neutral", label: "À venir" };
@@ -1119,3 +1178,24 @@ document.getElementById("cal-next-md").onclick = () => {
 };
 
 loadState();
+
+// Vérifie régulièrement les nouveaux scores et recharge l'état de l'application.
+// Le serveur applique son propre cache : un seul appel fournisseur par minute,
+// quel que soit le nombre de navigateurs ouverts.
+let livePollInProgress = false;
+window.setInterval(async () => {
+  if (document.hidden || livePollInProgress) return;
+  const manualDrawer = document.getElementById("manual-editor-drawer");
+  if (manualDrawer && manualDrawer.classList.contains("open")) return;
+  const runButton = document.getElementById("run-sim-btn");
+  if (runButton && runButton.disabled) return;
+
+  livePollInProgress = true;
+  try {
+    await loadState(state.activeSource);
+  } catch (err) {
+    console.error("Actualisation automatique impossible :", err);
+  } finally {
+    livePollInProgress = false;
+  }
+}, 60_000);
