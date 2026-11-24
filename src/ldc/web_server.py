@@ -307,6 +307,7 @@ class LdcRequestHandler(BaseHTTPRequestHandler):
                         "results_updated_at": match_state.get("results_updated_at"),
                         "matched_fixtures": match_state.get("matched_fixtures", 0),
                         "total_fixtures": match_state.get("total_fixtures", 0),
+                        "live_matches": len(match_state.get("live", [])),
                         "error": match_state.get("error"),
                         "poll_seconds": match_api.LIVE_MATCH_POLL_SECONDS if hasattr(match_api, "LIVE_MATCH_POLL_SECONDS") else 60,
                         "auto_updated": auto_updated,
