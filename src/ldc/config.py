@@ -42,8 +42,11 @@ MAX_ELO = 3000
 
 # Endpoints et clé API (surchargeable via variable d'environnement).
 CLUBELO_RANKING_URL = "https://clubelo.com/Ranking"
-# Les clés API restent hors du dépôt Git (variables d'environnement uniquement).
-BEYONDELO_API_KEY = os.environ.get("BEYONDELO_API_KEY", "").strip()
+# Clé beyondELO avec valeur par défaut dans le dépôt (comme auparavant).
+BEYONDELO_API_KEY = os.environ.get(
+    "BEYONDELO_API_KEY",
+    "be_53JJFu4692fXmqaSUFz7ykzKlEOHrRlcDpUP3eZrj-s",
+).strip()
 FOOTBALL_DATA_API_TOKEN = os.environ.get("FOOTBALL_DATA_API_TOKEN", "").strip()
 LIVE_MATCH_POLL_SECONDS = 300  # 5 minutes
 LIVE_AUTO_N_SIMS = DEFAULT_N_SIMS
