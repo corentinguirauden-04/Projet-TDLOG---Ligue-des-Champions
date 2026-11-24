@@ -87,7 +87,7 @@ python main.py --source beyondelo --n-sims 250000 # personnaliser le nombre de s
 python main.py --source clubelo --no-refresh      # réutiliser data/clubelo_ranking.html hors-ligne
 ```
 
-Par défaut, **500 000 simulations Monte Carlo** sont exécutées (`seed=42`) et produisent dans `outputs/<source>/` :
+Par défaut, **250 000 simulations Monte Carlo** sont exécutées (`seed=42`) et produisent dans `outputs/<source>/` :
 - `equipes/<club>/classement.png` : distribution des 36 places finales (36e à gauche → 1re à droite), encadrés alignés au-dessus de leurs zones (*Élimination* / *Barrages* / *Top 8*), rang moyen et points moyens (avec écarts-types) ;
 - `equipes/<club>/points.png` : distribution des points finaux, moyenne (vert-cyan), écart-type, plage probable 80 % (jaune) et points actuels/max ;
 - `equipes/<club>/seuils_points.png` : probabilités d'issue finale (Top 8 / barrages / éliminé) selon le total final de points atteignable par ce club (en tenant compte de sa différence de buts) ;
@@ -117,7 +117,7 @@ python web_app.py --host 0.0.0.0
 Puis ouvrir `http://<IPv4-du-PC>:8000` (`ipconfig` sous Windows).
 
 **Onglets disponibles dans l'interface :**
-- **Barre de contrôle :** choix de la source (**ClubElo**, **beyondELO**, **Personnalisé**), nombre de scénarios (`20 000` à `1 000 000`, `500 000` par défaut), recalcul à la volée, et éditeur des 36 notes en mode *Personnalisé* (entiers entre `500` et `3 000`, réinitialisation en un clic).
+- **Barre de contrôle :** choix de la source (**ClubElo**, **beyondELO**, **Personnalisé**), nombre de scénarios (`20 000` à `1 000 000`, `250 000` par défaut), recalcul à la volée, et éditeur des 36 notes en mode *Personnalisé* (entiers entre `500` et `3 000`, réinitialisation en un clic).
 - **Accueil & Repères :** 4 paliers clés (grands favoris, bataille Top 8, cœur du peloton Top 16, fil du rasoir Top 24) + focus clubs français (PSG, Lille, Lens).
 - **Explorateur par Club :** fiche complète, 6 graphiques interactifs (classement, points, seuils de points propres au club, matchs décisifs par classement / Top 8 / Top 24) avec zoom plein écran et onglet *Calendrier à venir*.
 - **Classement & Seuils :** tableau triable/filtrable, vue globale graphique, seuils empilés par points et explorateur **Points par place (1re–36e)**.
@@ -172,15 +172,21 @@ Aucune clé API ne doit être inscrite en dur dans `src/ldc/config.py`. Si une a
 
 ### Fonctionnement
 
-- Le serveur interroge football-data.org au plus une fois toutes les 60 secondes, quel
+- Le serveur interroge football-data.org au plus une fois toutes les **5 minutes**, quel
   que soit le nombre de navigateurs connectés. Le navigateur recharge l'état à la même
   fréquence et ne contacte jamais directement le fournisseur.
+- Il n'existe pas de tâche de polling en arrière-plan : les appels fournisseur sont
+  déclenchés par les requêtes web `/api/state` ou `/api/simulate`. En pratique, le premier
+  chargement de la page déclenche un contrôle, puis le navigateur en demande un nouveau
+  toutes les 5 minutes tant que l'onglet est visible. Si aucun navigateur n'utilise le
+  site, le serveur ne consomme pas de requêtes football-data.org. Un redémarrage du
+  serveur suivi d'un chargement de la page déclenche un nouveau contrôle immédiat.
 - Un match entre dans `PLAYED` seulement lorsqu'il possède le statut final
   `FINISHED` ou `AWARDED` et un score à temps réglementaire. Les matchs
   `IN_PLAY` / `PAUSED` restent dans `REMAINING` et peuvent afficher leur score en cours.
 - Après un changement des résultats terminés, le serveur recalcule automatiquement
-  les projections de la source Elo active avec 100 000 simulations, en conservant les
-  notes Elo fixes dans chaque simulation.
+  les projections de la source Elo active avec **250 000 simulations** (valeur par défaut),
+  en conservant les notes Elo fixes dans chaque simulation.
 - Les résultats synchronisés sont mis en cache localement dans
   `data/live_matches.json` (fichier ignoré par Git). Si l'API est temporairement
   indisponible, le dernier état valide est conservé. Sans jeton, le projet utilise
@@ -191,7 +197,7 @@ Aucune clé API ne doit être inscrite en dur dans `src/ldc/config.py`. Si une a
 ### Limite du forfait football-data.org
 
 Le forfait gratuit annonce des scores et calendriers différés (10 requêtes/minute).
-Un contrôle toutes les 60 secondes ne transforme donc pas ces données en véritables
+Un contrôle toutes les 5 minutes ne transforme donc pas ces données en véritables
 livescores : il ne fait que détecter les mises à jour dès qu'elles sont publiées par
 le fournisseur. Pour des scores réellement en direct pendant les matchs, football-data.org
 propose le forfait « Free w Livescores » (12 €/mois affichés sur sa page tarifaire),
