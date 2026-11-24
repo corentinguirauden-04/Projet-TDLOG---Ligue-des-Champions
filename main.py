@@ -3,7 +3,7 @@
 Exemples :
     python main.py
     python main.py --source clubelo
-    python main.py --source beyondelo --n-sims 250000
+    python main.py --source beyondelo --n-sims 500000
     python main.py --source manual --elo-file mon_elo.json
 """
 from __future__ import annotations
