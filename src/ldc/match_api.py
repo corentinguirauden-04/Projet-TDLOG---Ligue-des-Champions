@@ -141,7 +141,7 @@ def _read_saved_state() -> dict[str, Any] | None:
             "error": None,
             "has_external_data": True,
         }
-    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+    except (OSError, ValueError, KeyError, TypeError, AssertionError, json.JSONDecodeError):
         return None
 
 
@@ -213,9 +213,10 @@ def build_match_state(payload: dict[str, Any], previous: dict[str, Any] | None =
 
     # On accepte également une réponse limitée à la journée courante, mais pas un flux
     # sans aucun match correspondant au calendrier étudié.
-    if not api_by_pair:
+    if len(api_by_pair) < min(18, len(_BASE_FIXTURES)):
         raise ValueError(
-            "Aucun match API ne correspond au calendrier du projet. Vérifie la saison et les noms des clubs."
+            f"Couverture API insuffisante : {len(api_by_pair)} matchs reconnus sur "
+            f"{len(_BASE_FIXTURES)}. Vérifie la saison 2026 et les noms des clubs."
         )
 
     played: list[tuple[str, str, int, int]] = []
