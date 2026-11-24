@@ -246,6 +246,7 @@ class LdcRequestHandler(BaseHTTPRequestHandler):
             signature = match_state["signature"]
             static_signature = match_api.static_match_state()["signature"]
             auto_updated = False
+            projection_error = None
             if signature == static_signature:
                 _AUTO_SIMULATED_SIGNATURES.setdefault(active, signature)
             elif match_state.get("has_external_data") and _AUTO_SIMULATED_SIGNATURES.get(active) != signature:
@@ -261,9 +262,16 @@ class LdcRequestHandler(BaseHTTPRequestHandler):
                             played=played_src,
                             remaining=remaining_src,
                         )
+                        _AUTO_SIMULATED_SIGNATURES[active] = signature
                         if code == 0:
-                            _AUTO_SIMULATED_SIGNATURES[active] = signature
                             auto_updated = True
+                        else:
+                            projection_error = (
+                                f"Les résultats sont à jour, mais le recalcul de la source "
+                                f"{SOURCE_LABELS[active]} a échoué. Vérifie sa clé API Elo."
+                            )
+                        sources = _source_status()
+                        available_ids = [item["id"] for item in sources if item["available"]]
                     finally:
                         _SIM_LOCK.release()
 
@@ -312,6 +320,7 @@ class LdcRequestHandler(BaseHTTPRequestHandler):
                         "poll_seconds": match_api.LIVE_MATCH_POLL_SECONDS if hasattr(match_api, "LIVE_MATCH_POLL_SECONDS") else 60,
                         "auto_updated": auto_updated,
                         "auto_n_sims": LIVE_AUTO_N_SIMS,
+                        "projection_error": projection_error,
                     },
                 }
             )
