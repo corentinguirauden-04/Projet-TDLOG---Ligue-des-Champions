@@ -325,9 +325,14 @@ def check(
     assert len(pairs) == 144, len(pairs)
     for h, a in all_matches:
         assert h in DEFAULT_ELO and a in DEFAULT_ELO, (h, a)
-    # Chaque tranche de 18 matchs correspond à une journée complète (36 équipes distinctes).
-    for start in range(0, len(all_matches), mpd):
-        block = all_matches[start:start + mpd]
+    # Vérifie les journées sur le calendrier canonique, et non sur la concaténation
+    # PLAYED + REMAINING : pendant une journée, les matchs terminés peuvent être
+    # n'importe quel sous-ensemble des 18 affiches (pas nécessairement un préfixe).
+    canonical_fixtures = [(h, a) for h, a, _, _ in PLAYED] + list(REMAINING)
+    canonical_pairs = {frozenset(pair) for pair in canonical_fixtures}
+    assert {frozenset(pair) for pair in all_matches} == canonical_pairs
+    for start in range(0, len(canonical_fixtures), mpd):
+        block = canonical_fixtures[start:start + mpd]
         teams_in_block = {t for pair in block for t in pair}
         assert len(teams_in_block) == len(TEAMS), (start // mpd + 1, len(teams_in_block))
     return True
