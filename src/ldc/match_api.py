@@ -224,10 +224,12 @@ def build_match_state(payload: dict[str, Any], previous: dict[str, Any] | None =
 
     # On accepte également une réponse limitée à la journée courante, mais pas un flux
     # sans aucun match correspondant au calendrier étudié.
-    if len(api_by_pair) < min(18, len(_BASE_FIXTURES)):
+    if len(api_by_pair) != len(_BASE_FIXTURES):
         raise ValueError(
-            f"Couverture API insuffisante : {len(api_by_pair)} matchs reconnus sur "
-            f"{len(_BASE_FIXTURES)}. Vérifie la saison 2026 et les noms des clubs."
+            f"Couverture API incomplète : {len(api_by_pair)} matchs reconnus sur "
+            f"{len(_BASE_FIXTURES)}. Aucune mise à jour n'est appliquée pour éviter "
+            "des projections fondées sur un calendrier incomplet. Vérifie la saison 2026 "
+            "et les alias des clubs."
         )
 
     played: list[tuple[str, str, int, int]] = []
