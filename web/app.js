@@ -1014,7 +1014,7 @@ document.getElementById("reset-default-elo-btn").onclick = async () => {
 async function triggerSimulation(customElo = null) {
   const btn = document.getElementById("run-sim-btn");
   const saveBtn = document.getElementById("save-manual-elo-btn");
-  const nSims = parseInt(document.getElementById("n-sims").value, 10) || 500000;
+  const nSims = parseInt(document.getElementById("n-sims").value, 10) || 250000;
   btn.disabled = true;
   saveBtn.disabled = true;
   setStatus(`Calcul de ${nSims.toLocaleString("fr-FR")} scénarios en cours...`);
@@ -1188,7 +1188,7 @@ document.getElementById("cal-next-md").onclick = () => {
 loadState();
 
 // Vérifie régulièrement les nouveaux scores et recharge l'état de l'application.
-// Le serveur applique son propre cache : un seul appel fournisseur par minute,
+// Le serveur applique son propre cache : un seul appel fournisseur toutes les cinq minutes,
 // quel que soit le nombre de navigateurs ouverts.
 let livePollInProgress = false;
 window.setInterval(async () => {
@@ -1206,4 +1206,4 @@ window.setInterval(async () => {
   } finally {
     livePollInProgress = false;
   }
-}, 60_000);
+}, 300_000);
