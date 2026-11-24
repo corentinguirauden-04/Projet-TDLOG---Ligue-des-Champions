@@ -246,7 +246,6 @@ class LdcRequestHandler(BaseHTTPRequestHandler):
             signature = match_state["signature"]
             static_signature = match_api.static_match_state()["signature"]
             auto_updated = False
-            projection_error = None
             if signature == static_signature:
                 _AUTO_SIMULATED_SIGNATURES.setdefault(active, signature)
             elif match_state.get("has_external_data") and _AUTO_SIMULATED_SIGNATURES.get(active) != signature:
@@ -265,8 +264,9 @@ class LdcRequestHandler(BaseHTTPRequestHandler):
                         _AUTO_SIMULATED_SIGNATURES[active] = signature
                         if code == 0:
                             auto_updated = True
+                            _AUTO_SIMULATION_ERRORS.pop(active, None)
                         else:
-                            projection_error = (
+                            _AUTO_SIMULATION_ERRORS[active] = (
                                 f"Les résultats sont à jour, mais le recalcul de la source "
                                 f"{SOURCE_LABELS[active]} a échoué. Vérifie sa clé API Elo."
                             )
@@ -275,6 +275,7 @@ class LdcRequestHandler(BaseHTTPRequestHandler):
                     finally:
                         _SIM_LOCK.release()
 
+            projection_error = _AUTO_SIMULATION_ERRORS.get(active)
             teams = _read_source_results(active, played_src=played_src) if active in available_ids else []
             schedule = _schedule_payload(
                 active,
