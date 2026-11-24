@@ -1448,3 +1448,21 @@ tbody tr:hover {
   border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
 }
+
+
+/* Synchronisation des scores */
+.live-sync-status {
+  display: block;
+  flex-basis: 100%;
+  margin-top: 4px;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+.live-sync-status.ok { color: #74e6c4; }
+.live-sync-status.warning { color: #ffc857; }
+.live-sync-status.muted { color: #a9b7ee; }
+.live-match {
+  border: 1px solid rgba(255, 93, 143, 0.55);
+  box-shadow: 0 0 0 1px rgba(255, 93, 143, 0.08);
+}
+.live-score { color: #ff7da4; }
