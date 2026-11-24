@@ -16,6 +16,7 @@ env/
 ENV/
 
 # Fichiers temporaires et ressources annexes de pages sauvegardées
+data/live_matches.json
 *.tmp
 *_files/
 clubelo_debug*.html

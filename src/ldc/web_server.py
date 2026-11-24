@@ -21,6 +21,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from ldc import data as ldc_data
+from ldc import match_api
 from ldc import pipeline
 from ldc import simulation as ldc_sim
 from ldc.config import (
@@ -28,6 +29,7 @@ from ldc.config import (
     DEFAULT_N_SIMS,
     MAX_N_SIMS,
     MIN_N_SIMS,
+    LIVE_AUTO_N_SIMS,
     OUTPUTS_DIR,
     SOURCE_LABELS,
     SOURCES,
@@ -36,6 +38,8 @@ from ldc.config import (
 
 # Sérialise les recalculs pour éviter les accès concurrents sur data/elo.json et outputs/.
 _SIM_LOCK = threading.Lock()
+_AUTO_SIMULATED_SIGNATURES: dict[str, str] = {}
+_AUTO_SIMULATION_ERRORS: dict[str, str] = {}
 _STATIC_ASSETS = {"/styles.css": "styles.css", "/app.js": "app.js"}
 
 
@@ -69,6 +73,7 @@ def _schedule_payload(
     source: str,
     played_src: list[tuple[str, str, int, int]] | None = None,
     remaining_src: list[tuple[str, str]] | None = None,
+    live_src: list[dict] | None = None,
 ) -> dict:
     """Construit le calendrier (matchs joués + restants enrichis), y compris en cours de journée."""
     p = ldc_data.PLAYED if played_src is None else played_src
@@ -105,16 +110,35 @@ def _schedule_payload(
             for idx, (h, a) in enumerate(r)
         ]
 
+    live_by_pair = {
+        (item.get("home"), item.get("away")): item
+        for item in (live_src or [])
+    }
+    for item in remaining:
+        live_item = live_by_pair.get((item.get("home"), item.get("away")))
+        if live_item:
+            item.update({
+                "status": live_item.get("status"),
+                "score_home": live_item.get("score_home"),
+                "score_away": live_item.get("score_away"),
+                "utc_date": live_item.get("utc_date"),
+            })
+
     return {"played": played, "remaining": remaining}
 
 
-def _read_source_results(source: str) -> list[dict]:
+def _read_source_results(
+    source: str,
+    played_src: list[tuple[str, str, int, int]] | None = None,
+) -> list[dict]:
     """Lit les probabilités CSV d'une source et les enrichit avec le classement réel."""
     csv_path = OUTPUTS_DIR / source / "probabilites_equipes.csv"
     if not csv_path.is_file():
         return []
 
-    current_by_team = {row["team"]: row for row in ldc_sim.current_table()}
+    current_by_team = {row["team"]: row for row in ldc_sim.current_table(
+        played=ldc_data.PLAYED if played_src is None else played_src
+    )}
     rows: list[dict] = []
 
     with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
@@ -208,13 +232,65 @@ class LdcRequestHandler(BaseHTTPRequestHandler):
 
         if path == "/api/state":
             params = parse_qs(parsed.query)
+            match_state = match_api.get_match_state()
+            played_src = match_state["played"]
+            remaining_src = match_state["remaining"]
+            live_src = match_state.get("live", [])
+
             sources = _source_status()
             available_ids = [s["id"] for s in sources if s["available"]]
             requested = params.get("source", [None])[0]
             active = requested if requested in SOURCES else (available_ids[0] if available_ids else "clubelo")
-            teams = _read_source_results(active) if active in available_ids else []
-            schedule = _schedule_payload(active)
-            progress = ldc_data.matchday_progress()
+
+            # Si les résultats synchronisés diffèrent des données de départ, on régénère
+            # une seule fois les projections de la source consultée. L'Elo reste inchangé
+            # si le fichier local contient déjà la source demandée.
+            signature = match_state["signature"]
+            static_signature = match_api.static_match_state()["signature"]
+            auto_updated = False
+            if signature == static_signature:
+                _AUTO_SIMULATED_SIGNATURES.setdefault(active, signature)
+            elif match_state.get("has_external_data") and _AUTO_SIMULATED_SIGNATURES.get(active) != signature:
+                if _SIM_LOCK.acquire(blocking=False):
+                    try:
+                        auto_n_sims = LIVE_AUTO_N_SIMS
+                        manual_file = CUSTOM_ELO_FILE if active == "manual" and CUSTOM_ELO_FILE.is_file() else None
+                        code = pipeline.run_pipeline(
+                            source=active,
+                            n_sims=auto_n_sims,
+                            no_refresh=True,
+                            elo_file=manual_file,
+                            played=played_src,
+                            remaining=remaining_src,
+                        )
+                        _AUTO_SIMULATED_SIGNATURES[active] = signature
+                        if code == 0:
+                            auto_updated = True
+                            _AUTO_SIMULATION_ERRORS.pop(active, None)
+                        else:
+                            _AUTO_SIMULATION_ERRORS[active] = (
+                                f"Les résultats sont à jour, mais le recalcul de la source "
+                                f"{SOURCE_LABELS[active]} a échoué. Vérifie sa clé API Elo."
+                            )
+                        sources = _source_status()
+                        available_ids = [item["id"] for item in sources if item["available"]]
+                    finally:
+                        _SIM_LOCK.release()
+
+            projection_error = _AUTO_SIMULATION_ERRORS.get(active)
+            teams = _read_source_results(active, played_src=played_src) if active in available_ids else []
+            schedule = _schedule_payload(
+                active,
+                played_src=played_src,
+                remaining_src=remaining_src,
+                live_src=live_src,
+            )
+            progress = ldc_data.matchday_progress(
+                n_played=len(played_src),
+                n_remaining=len(remaining_src),
+            )
+            csv_path = OUTPUTS_DIR / active / "probabilites_equipes.csv"
+            projection_version = csv_path.stat().st_mtime_ns if csv_path.is_file() else 0
 
             self._send_json(
                 {
@@ -233,6 +309,22 @@ class LdcRequestHandler(BaseHTTPRequestHandler):
                     "remaining": schedule["remaining"],
                     "default_elo": dict(ldc_data.DEFAULT_ELO),
                     "manual_elo": _get_manual_elo(),
+                    "projection_version": projection_version,
+                    "live_sync": {
+                        "configured": match_state.get("configured", False),
+                        "connected": match_state.get("connected", False),
+                        "provider": match_state.get("provider"),
+                        "last_checked_at": match_state.get("last_checked_at"),
+                        "results_updated_at": match_state.get("results_updated_at"),
+                        "matched_fixtures": match_state.get("matched_fixtures", 0),
+                        "total_fixtures": match_state.get("total_fixtures", 0),
+                        "live_matches": len(match_state.get("live", [])),
+                        "error": match_state.get("error"),
+                        "poll_seconds": match_api.LIVE_MATCH_POLL_SECONDS if hasattr(match_api, "LIVE_MATCH_POLL_SECONDS") else 60,
+                        "auto_updated": auto_updated,
+                        "auto_n_sims": LIVE_AUTO_N_SIMS,
+                        "projection_error": projection_error,
+                    },
                 }
             )
             return
@@ -289,8 +381,21 @@ class LdcRequestHandler(BaseHTTPRequestHandler):
             if CUSTOM_ELO_FILE.is_file():
                 elo_file = CUSTOM_ELO_FILE
 
+        match_state = match_api.get_match_state()
+        played_src = match_state["played"]
+        remaining_src = match_state["remaining"]
+
         with _SIM_LOCK:
-            code = pipeline.run_pipeline(source=source, n_sims=n_sims, elo_file=elo_file)
+            code = pipeline.run_pipeline(
+                source=source,
+                n_sims=n_sims,
+                elo_file=elo_file,
+                played=played_src,
+                remaining=remaining_src,
+            )
+            if code == 0:
+                _AUTO_SIMULATED_SIGNATURES[source] = match_state["signature"]
+                _AUTO_SIMULATION_ERRORS.pop(source, None)
 
         if code != 0:
             self._send_json(
@@ -306,8 +411,11 @@ class LdcRequestHandler(BaseHTTPRequestHandler):
                 "output_folder": source,
                 "n_sims": n_sims,
                 "sources": _source_status(),
-                "teams": _read_source_results(source),
-                "remaining": _schedule_payload(source)["remaining"],
+                "teams": _read_source_results(source, played_src=played_src),
+                "remaining": _schedule_payload(
+                    source, played_src=played_src, remaining_src=remaining_src,
+                    live_src=match_state.get("live", []),
+                )["remaining"],
                 "manual_elo": _get_manual_elo(),
             }
         )

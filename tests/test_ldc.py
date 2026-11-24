@@ -17,11 +17,16 @@ import numpy as np
 # Permet d'importer `ldc` depuis `src/` sans installation préalable.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from ldc import config, data, elo, pipeline, simulation, visualization, web_server
+from ldc import config, data, elo, match_api, pipeline, simulation, visualization, web_server
 
 
 class TestDataLayer(unittest.TestCase):
     """Vérifie les invariants du calendrier et la validation des notes Elo."""
+
+    def test_default_simulation_and_live_poll_settings(self) -> None:
+        self.assertEqual(config.DEFAULT_N_SIMS, 500_000)
+        self.assertEqual(config.LIVE_AUTO_N_SIMS, 500_000)
+        self.assertEqual(config.LIVE_MATCH_POLL_SECONDS, 300)
 
     def test_calendar_invariants(self) -> None:
         self.assertTrue(data.check())
@@ -146,6 +151,84 @@ class TestSimulationEngine(unittest.TestCase):
             self.assertTrue(0.0 <= entry["top24_importance"] <= 1.0)
             self.assertGreaterEqual(entry["top8_max"], entry["top8_min"])
             self.assertGreaterEqual(entry["top24_max"], entry["top24_min"])
+
+
+
+class TestLiveMatchSync(unittest.TestCase):
+    """Teste la conversion hors-ligne des réponses fournisseur en résultats et matchs restants."""
+
+    @staticmethod
+    def _api_match(home: str, away: str, status: str, hg=None, ag=None) -> dict:
+        return {
+            "homeTeam": {"name": home},
+            "awayTeam": {"name": away},
+            "status": status,
+            "score": {"fullTime": {"home": hg, "away": ag}},
+            "utcDate": "2026-11-24T20:00:00Z",
+        }
+
+    def test_arbitrary_nine_finished_matches_in_partial_matchday(self) -> None:
+        fixtures = [(h, a) for h, a, _, _ in data.PLAYED] + list(data.REMAINING)
+        old_scores = {(h, a): (hg, ag) for h, a, hg, ag in data.PLAYED}
+        # Neuf affiches terminées de façon non contiguë : elles ne forment pas un préfixe
+        # du calendrier J5. C'est le cas réel à gérer pendant deux soirées européennes.
+        completed_indexes = set(range(0, 18, 2))
+        api_matches = []
+        for idx, (home, away) in enumerate(fixtures):
+            if idx < len(data.PLAYED):
+                hg, ag = old_scores[(home, away)]
+                api_matches.append(self._api_match(home, away, "FINISHED", hg, ag))
+            elif idx - len(data.PLAYED) in completed_indexes:
+                api_matches.append(self._api_match(home, away, "FINISHED", 2, 1))
+            else:
+                api_matches.append(self._api_match(home, away, "SCHEDULED"))
+
+        state = match_api.build_match_state({"matches": api_matches})
+        self.assertEqual(len(state["played"]), 81)
+        self.assertEqual(len(state["remaining"]), 63)
+        self.assertTrue(data.check(played=state["played"], remaining=state["remaining"]))
+
+        progress = data.matchday_progress(
+            n_played=len(state["played"]),
+            n_remaining=len(state["remaining"]),
+        )
+        self.assertEqual(progress["in_progress"], 5)
+        self.assertEqual(progress["played_in_current"], 9)
+
+        table = simulation.current_table(played=state["played"])
+        self.assertEqual(sum(row["played"] == 5 for row in table), 18)
+        self.assertEqual(sum(row["played"] == 4 for row in table), 18)
+
+        sim = simulation.simulate(
+            n_sims=200,
+            seed=7,
+            elo=data.DEFAULT_ELO,
+            played=state["played"],
+            remaining=state["remaining"],
+        )
+        self.assertEqual(sim["n_played"], 81)
+        self.assertEqual(len(sim["remaining"]), 63)
+
+    def test_live_match_is_displayed_but_not_counted_as_finished(self) -> None:
+        fixtures = [(h, a) for h, a, _, _ in data.PLAYED] + list(data.REMAINING)
+        old_scores = {(h, a): (hg, ag) for h, a, hg, ag in data.PLAYED}
+        api_matches = []
+        live_pair = data.REMAINING[0]
+        for idx, (home, away) in enumerate(fixtures):
+            if idx < len(data.PLAYED):
+                hg, ag = old_scores[(home, away)]
+                api_matches.append(self._api_match(home, away, "FINISHED", hg, ag))
+            elif (home, away) == live_pair:
+                api_matches.append(self._api_match(home, away, "IN_PLAY", 1, 0))
+            else:
+                api_matches.append(self._api_match(home, away, "SCHEDULED"))
+
+        state = match_api.build_match_state({"matches": api_matches})
+        self.assertEqual(len(state["played"]), 72)
+        self.assertEqual(len(state["remaining"]), 72)
+        self.assertEqual(len(state["live"]), 1)
+        self.assertEqual(state["live"][0]["score_home"], 1)
+        self.assertEqual(state["live"][0]["score_away"], 0)
 
 
 class TestVisualization(unittest.TestCase):

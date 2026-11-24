@@ -69,7 +69,7 @@ Seuls **NumPy** et **Matplotlib** sont nécessaires (la CLI, le parsing HTML/HTT
 python -m pip install -r requirements.txt
 ```
 
-> **Variable d'environnement optionnelle :** la clé API beyondELO peut être surchargée via `BEYONDELO_API_KEY` (une clé par défaut est définie dans `src/ldc/config.py`).
+> **Variables d'environnement :** définir `BEYONDELO_API_KEY` pour utiliser beyondELO et `FOOTBALL_DATA_API_TOKEN` pour synchroniser les résultats. Les clés ne sont jamais stockées dans le code.
 
 ---
 
@@ -83,7 +83,7 @@ python main.py --source clubelo                   # ClubElo : API -> repli HTML 
 python main.py --source beyondelo                 # API beyondELO -> outputs/beyondelo/
 python main.py --source manual                    # DEFAULT_ELO -> outputs/manual/
 python main.py --source manual --elo-file f.json  # Elo personnalisé JSON -> outputs/manual/
-python main.py --source beyondelo --n-sims 250000 # personnaliser le nombre de simulations
+python main.py --source beyondelo --n-sims 500000 # personnaliser le nombre de simulations
 python main.py --source clubelo --no-refresh      # réutiliser data/clubelo_ranking.html hors-ligne
 ```
 
@@ -148,7 +148,68 @@ Interroge l'API `public-api.beyondelo.com` (`--source beyondelo`, avec date hist
 
 ---
 
-## 5. Modèle mathématique, hypothèses & limites (`src/ldc/simulation.py`)
+## 5. Synchronisation automatique des résultats (football-data.org)
+
+Le serveur web peut synchroniser les résultats de la phase de ligue via l'API
+football-data.org. La clé est utilisée uniquement côté Python : elle n'est jamais
+envoyée au navigateur ni stockée dans le dépôt.
+
+### Configuration
+
+1. Créer un compte sur https://www.football-data.org/ et récupérer un jeton API.
+2. Dans PowerShell, définir la variable avant de lancer le serveur :
+
+```powershell
+$env:FOOTBALL_DATA_API_TOKEN = "VOTRE_JETON_FOOTBALL_DATA"
+python web_app.py
+```
+
+Pour la conserver entre les sessions, utiliser `setx FOOTBALL_DATA_API_TOKEN "VOTRE_JETON"`
+puis ouvrir un nouveau terminal. Ne jamais ajouter le jeton à un fichier suivi par Git.
+
+Pour utiliser aussi beyondELO, définir séparément `BEYONDELO_API_KEY` dans l'environnement.
+Aucune clé API ne doit être inscrite en dur dans `src/ldc/config.py`. Si une ancienne clé a déjà été publiée dans Git, il faut la révoquer et en générer une nouvelle : supprimer le texte du dernier commit ne l'efface pas de l'historique Git.
+
+### Fonctionnement
+
+- Le serveur interroge football-data.org au plus une fois toutes les **5 minutes**, quel
+  que soit le nombre de navigateurs connectés. Le navigateur recharge l'état à la même
+  fréquence et ne contacte jamais directement le fournisseur.
+- Il n'existe pas de tâche de polling en arrière-plan : les appels fournisseur sont
+  déclenchés par les requêtes web `/api/state` ou `/api/simulate`. En pratique, le premier
+  chargement de la page déclenche un contrôle, puis le navigateur en demande un nouveau
+  toutes les 5 minutes tant que l'onglet est visible. Si aucun navigateur n'utilise le
+  site, le serveur ne consomme pas de requêtes football-data.org. Un redémarrage du
+  serveur suivi d'un chargement de la page déclenche un nouveau contrôle immédiat.
+- Un match entre dans `PLAYED` seulement lorsqu'il possède le statut final
+  `FINISHED` ou `AWARDED` et un score à temps réglementaire. Les matchs
+  `IN_PLAY` / `PAUSED` restent dans `REMAINING` et peuvent afficher leur score en cours.
+- Après un changement des résultats terminés, le serveur recalcule automatiquement
+  les projections de la source Elo active avec **500 000 simulations** (valeur par défaut),
+  en conservant les notes Elo fixes dans chaque simulation.
+- Les résultats synchronisés sont mis en cache localement dans
+  `data/live_matches.json` (fichier ignoré par Git). Si l'API est temporairement
+  indisponible, le dernier état valide est conservé. Sans jeton, le projet utilise
+  les résultats statiques de `src/ldc/data.py`.
+- L'indicateur sous la barre de commande signale la connexion, l'heure du dernier
+  contrôle et les éventuelles erreurs.
+
+### Limite du forfait football-data.org
+
+Le forfait gratuit annonce des scores et calendriers différés (10 requêtes/minute).
+Un contrôle toutes les 5 minutes ne transforme donc pas ces données en véritables
+livescores : il ne fait que détecter les mises à jour dès qu'elles sont publiées par
+le fournisseur. Pour des scores réellement en direct pendant les matchs, football-data.org
+propose le forfait « Free w Livescores » (12 €/mois affichés sur sa page tarifaire),
+avec 20 requêtes/minute. Vérifier les conditions et le tarif au moment de l'inscription.
+
+Références fournisseur :
+- Tarifs et disponibilité des livescores : https://www.football-data.org/pricing
+- Documentation API et statuts des matchs : https://www.football-data.org/documentation/api
+
+---
+
+## 6. Modèle mathématique, hypothèses & limites (`src/ldc/simulation.py`)
 
 ### Modèle de match
 La probabilité théorique de victoire de l'équipe à domicile inclut un bonus terrain de `HOME_BONUS = 100` points Elo :
@@ -177,4 +238,4 @@ Deux polynômes par morceaux (`lam_home(W)` et `lam_away(W)`) convertissent `W` 
 - **Indépendance des buts :** les buts domicile et extérieur suivent deux lois de Poisson indépendantes (pas de correction de Dixon-Coles sur les petits scores).
 - **Elo constant durant la simulation :** conserver l'Elo fixe évite tout biais lié à l'ordre des matchs simultanés d'une même journée, au prix de ne pas modéliser une éventuelle dynamique de forme en cours de fin de phase.
 - **Départage :** points, différence de buts, buts marqués, buts à l'extérieur, victoires, victoires à l'extérieur puis tirage aléatoire (les critères UEFA secondaires comme les points des adversaires ou le fair-play ne sont pas modélisés).
-- **Calendrier manuel :** après chaque nouvelle journée, actualiser `PLAYED` et `REMAINING` dans `src/ldc/data.py` puis vérifier avec `python -m unittest discover -s tests -v`.
+- **Mode sans fournisseur :** si aucune clé football-data.org n'est configurée, le projet conserve les listes statiques `PLAYED` et `REMAINING` de `src/ldc/data.py`. Avec le jeton, les scores terminés sont synchronisés automatiquement.
