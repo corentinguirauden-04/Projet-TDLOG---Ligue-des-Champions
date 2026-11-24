@@ -55,7 +55,7 @@ _TEAM_ALIASES: dict[str, tuple[str, ...]] = {
     "Roma": ("Roma", "AS Roma"),
     "Slovan Bratislava": ("Slovan Bratislava", "Slovan", "ŠK Slovan Bratislava"),
     "Sabah": ("Sabah", "Sabah FK", "Sabah Baku"),
-    "Shakhtar": ("Shakhtar", "Shakhtar Donetsk", "FC Shakhtar Donetsk"),
+    "Shakhtar": ("Shakhtar", "Shakhtar Donetsk", "FC Shakhtar Donetsk", "FK Shakhtar Donetsk"),
     "Slavia Praha": ("Slavia Praha", "Slavia Prague", "SK Slavia Praha"),
     "Sporting CP": ("Sporting CP", "Sporting", "Sporting Lisbon", "Sporting Clube de Portugal"),
     "Stuttgart": ("Stuttgart", "VfB Stuttgart"),
