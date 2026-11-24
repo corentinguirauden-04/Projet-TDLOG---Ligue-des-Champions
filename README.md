@@ -148,7 +148,62 @@ Interroge l'API `public-api.beyondelo.com` (`--source beyondelo`, avec date hist
 
 ---
 
-## 5. Modèle mathématique, hypothèses & limites (`src/ldc/simulation.py`)
+## 5. Synchronisation automatique des résultats (football-data.org)
+
+Le serveur web peut synchroniser les résultats de la phase de ligue via l'API
+football-data.org. La clé est utilisée uniquement côté Python : elle n'est jamais
+envoyée au navigateur ni stockée dans le dépôt.
+
+### Configuration
+
+1. Créer un compte sur https://www.football-data.org/ et récupérer un jeton API.
+2. Dans PowerShell, définir la variable avant de lancer le serveur :
+
+```powershell
+$env:FOOTBALL_DATA_API_TOKEN = "VOTRE_JETON_FOOTBALL_DATA"
+python web_app.py
+```
+
+Pour la conserver entre les sessions, utiliser `setx FOOTBALL_DATA_API_TOKEN "VOTRE_JETON"`
+puis ouvrir un nouveau terminal. Ne jamais ajouter le jeton à un fichier suivi par Git.
+
+Pour utiliser aussi beyondELO, définir séparément `BEYONDELO_API_KEY` dans l'environnement.
+Aucune clé API ne doit être inscrite en dur dans `src/ldc/config.py`.
+
+### Fonctionnement
+
+- Le serveur interroge football-data.org au plus une fois toutes les 60 secondes, quel
+  que soit le nombre de navigateurs connectés. Le navigateur recharge l'état à la même
+  fréquence et ne contacte jamais directement le fournisseur.
+- Un match entre dans `PLAYED` seulement lorsqu'il possède le statut final
+  `FINISHED` ou `AWARDED` et un score à temps réglementaire. Les matchs
+  `IN_PLAY` / `PAUSED` restent dans `REMAINING` et peuvent afficher leur score en cours.
+- Après un changement des résultats terminés, le serveur recalcule automatiquement
+  les projections de la source Elo active avec 100 000 simulations, en conservant les
+  notes Elo fixes dans chaque simulation.
+- Les résultats synchronisés sont mis en cache localement dans
+  `data/live_matches.json` (fichier ignoré par Git). Si l'API est temporairement
+  indisponible, le dernier état valide est conservé. Sans jeton, le projet utilise
+  les résultats statiques de `src/ldc/data.py`.
+- L'indicateur sous la barre de commande signale la connexion, l'heure du dernier
+  contrôle et les éventuelles erreurs.
+
+### Limite du forfait football-data.org
+
+Le forfait gratuit annonce des scores et calendriers différés (10 requêtes/minute).
+Un contrôle toutes les 60 secondes ne transforme donc pas ces données en véritables
+livescores : il ne fait que détecter les mises à jour dès qu'elles sont publiées par
+le fournisseur. Pour des scores réellement en direct pendant les matchs, football-data.org
+propose le forfait « Free w Livescores » (12 €/mois affichés sur sa page tarifaire),
+avec 20 requêtes/minute. Vérifier les conditions et le tarif au moment de l'inscription.
+
+Références fournisseur :
+- Tarifs et disponibilité des livescores : https://www.football-data.org/pricing
+- Documentation API et statuts des matchs : https://www.football-data.org/documentation/api
+
+---
+
+## 6. Modèle mathématique, hypothèses & limites (`src/ldc/simulation.py`)
 
 ### Modèle de match
 La probabilité théorique de victoire de l'équipe à domicile inclut un bonus terrain de `HOME_BONUS = 100` points Elo :
