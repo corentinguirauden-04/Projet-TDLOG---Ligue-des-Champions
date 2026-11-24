@@ -393,6 +393,7 @@ class LdcRequestHandler(BaseHTTPRequestHandler):
             )
             if code == 0:
                 _AUTO_SIMULATED_SIGNATURES[source] = match_state["signature"]
+                _AUTO_SIMULATION_ERRORS.pop(source, None)
 
         if code != 0:
             self._send_json(
