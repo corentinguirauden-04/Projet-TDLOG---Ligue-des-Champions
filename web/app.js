@@ -73,11 +73,19 @@ function renderLiveSyncStatus() {
     el.className = "brand-sub live-sync-status warning";
     return;
   }
+  if (sync.projection_error) {
+    el.textContent = sync.projection_error;
+    el.className = "brand-sub live-sync-status warning";
+    return;
+  }
   const checkedAt = sync.last_checked_at
     ? new Date(sync.last_checked_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
     : "—";
   const liveLabel = sync.live_matches > 0 ? ` · ${sync.live_matches} match(s) en cours` : "";
-  el.textContent = `Scores vérifiés à ${checkedAt} · contrôle toutes les ${sync.poll_seconds || 60} s${liveLabel}`;
+  const coverageLabel = sync.total_fixtures
+    ? ` · ${sync.matched_fixtures}/${sync.total_fixtures} matchs reconnus`
+    : "";
+  el.textContent = `Scores vérifiés à ${checkedAt} · contrôle toutes les ${sync.poll_seconds || 60} s${liveLabel}${coverageLabel}`;
   el.className = "brand-sub live-sync-status ok";
 }
 
