@@ -25,19 +25,19 @@ LIVE_STATUSES = {"IN_PLAY", "PAUSED", "LIVE", "SUSPENDED"}
 
 # Variantes de noms rencontrées dans les flux de résultats.
 _TEAM_ALIASES: dict[str, tuple[str, ...]] = {
-    "AEK": ("AEK", "AEK Athens"),
-    "Arsenal": ("Arsenal",),
-    "Aston Villa": ("Aston Villa",),
-    "Atletico": ("Atletico", "Atletico Madrid", "Atletico de Madrid"),
+    "AEK": ("AEK", "AEK Athens", "AEK Athens FC"),
+    "Arsenal": ("Arsenal", "Arsenal FC"),
+    "Aston Villa": ("Aston Villa", "Aston Villa FC"),
+    "Atletico": ("Atletico", "Atletico Madrid", "Atletico de Madrid", "Club Atletico de Madrid", "Club Atlético de Madrid"),
     "Dortmund": ("Dortmund", "Borussia Dortmund"),
     "Barcelona": ("Barcelona", "FC Barcelona"),
-    "Bayern": ("Bayern", "Bayern Munich", "Bayern München"),
+    "Bayern": ("Bayern", "Bayern Munich", "Bayern München", "FC Bayern München"),
     "Bodo/Glimt": ("Bodo/Glimt", "Bodo Glimt", "Bodø/Glimt", "Bodoe Glimt"),
-    "Club Brugge": ("Club Brugge", "Brugge"),
+    "Club Brugge": ("Club Brugge", "Brugge", "Club Brugge KV"),
     "Como": ("Como", "Como 1907"),
-    "Fenerbahce": ("Fenerbahce", "Fenerbahçe"),
+    "Fenerbahce": ("Fenerbahce", "Fenerbahçe", "Fenerbahce SK", "Fenerbahçe SK"),
     "Feyenoord": ("Feyenoord",),
-    "Galatasaray": ("Galatasaray",),
+    "Galatasaray": ("Galatasaray", "Galatasaray SK"),
     "Inter": ("Inter", "Internazionale", "Inter Milan", "FC Internazionale Milano"),
     "LASK": ("LASK", "LASK Linz"),
     "Leipzig": ("Leipzig", "RB Leipzig"),
@@ -45,18 +45,18 @@ _TEAM_ALIASES: dict[str, tuple[str, ...]] = {
     "Lille": ("Lille", "Lille OSC"),
     "Liverpool": ("Liverpool", "Liverpool FC"),
     "Man City": ("Man City", "Manchester City", "Manchester City FC"),
-    "Man United": ("Man United", "Manchester United", "Man Utd"),
+    "Man United": ("Man United", "Manchester United", "Man Utd", "Manchester United FC"),
     "Napoli": ("Napoli", "SSC Napoli"),
-    "PSG": ("PSG", "Paris SG", "Paris Saint-Germain"),
+    "PSG": ("PSG", "Paris SG", "Paris Saint-Germain", "Paris Saint-Germain FC"),
     "Porto": ("Porto", "FC Porto"),
     "PSV": ("PSV", "PSV Eindhoven"),
-    "Real Betis": ("Real Betis", "Betis"),
+    "Real Betis": ("Real Betis", "Betis", "Real Betis Balompie", "Real Betis Balompié"),
     "Real Madrid": ("Real Madrid", "Real Madrid CF"),
     "Roma": ("Roma", "AS Roma"),
     "Slovan Bratislava": ("Slovan Bratislava", "Slovan", "ŠK Slovan Bratislava"),
     "Sabah": ("Sabah", "Sabah FK", "Sabah Baku"),
-    "Shakhtar": ("Shakhtar", "Shakhtar Donetsk"),
-    "Slavia Praha": ("Slavia Praha", "Slavia Prague"),
+    "Shakhtar": ("Shakhtar", "Shakhtar Donetsk", "FC Shakhtar Donetsk"),
+    "Slavia Praha": ("Slavia Praha", "Slavia Prague", "SK Slavia Praha"),
     "Sporting CP": ("Sporting CP", "Sporting", "Sporting Lisbon", "Sporting Clube de Portugal"),
     "Stuttgart": ("Stuttgart", "VfB Stuttgart"),
     "Viking": ("Viking", "Viking FK"),
@@ -182,13 +182,24 @@ def build_match_state(payload: dict[str, Any], previous: dict[str, Any] | None =
             results[(h, a)] = (int(hg), int(ag))
 
     api_by_pair: dict[tuple[str, str], dict[str, Any]] = {}
+    def resolve_team(team_info: Any) -> str | None:
+        if not isinstance(team_info, dict):
+            return None
+        # football-data.org expose plusieurs libellés : le nom long, le nom court
+        # et le sigle. On essaie chacun pour éviter de perdre un match sur un alias.
+        for field in ("name", "shortName", "tla"):
+            raw_name = team_info.get(field)
+            if raw_name:
+                found = _ALIAS_TO_TEAM.get(_norm(raw_name))
+                if found:
+                    return found
+        return None
+
     for item in raw_matches:
         if not isinstance(item, dict):
             continue
-        home_raw = (item.get("homeTeam") or {}).get("name")
-        away_raw = (item.get("awayTeam") or {}).get("name")
-        home = _ALIAS_TO_TEAM.get(_norm(home_raw)) if home_raw else None
-        away = _ALIAS_TO_TEAM.get(_norm(away_raw)) if away_raw else None
+        home = resolve_team(item.get("homeTeam"))
+        away = resolve_team(item.get("awayTeam"))
         pair = (home, away)
         if home not in TEAMS or away not in TEAMS or pair not in _BASE_FIXTURES:
             continue
