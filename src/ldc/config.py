@@ -17,6 +17,7 @@ WEB_DIR = ROOT_DIR / "web"
 
 ELO_FILE = DATA_DIR / "elo.json"
 CLUBELO_HTML_FILE = DATA_DIR / "clubelo_ranking.html"
+LIVE_MATCHES_FILE = DATA_DIR / "live_matches.json"
 CUSTOM_ELO_FILE = OUTPUTS_DIR / "manual" / "custom_elo.json"
 
 # Sources Elo exposées par la pipeline et l'interface web.
@@ -41,7 +42,8 @@ MAX_ELO = 3000
 
 # Endpoints et clé API (surchargeable via variable d'environnement).
 CLUBELO_RANKING_URL = "https://clubelo.com/Ranking"
-BEYONDELO_API_KEY = os.environ.get(
-    "BEYONDELO_API_KEY",
-    "be_53JJFu4692fXmqaSUFz7ykzKlEOHrRlcDpUP3eZrj-s",
-)
+# Les clés API restent hors du dépôt Git (variables d'environnement uniquement).
+BEYONDELO_API_KEY = os.environ.get("BEYONDELO_API_KEY", "").strip()
+FOOTBALL_DATA_API_TOKEN = os.environ.get("FOOTBALL_DATA_API_TOKEN", "").strip()
+LIVE_MATCH_POLL_SECONDS = 60
+LIVE_AUTO_N_SIMS = 100_000
