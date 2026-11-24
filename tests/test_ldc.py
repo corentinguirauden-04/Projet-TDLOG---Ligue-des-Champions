@@ -24,8 +24,8 @@ class TestDataLayer(unittest.TestCase):
     """Vérifie les invariants du calendrier et la validation des notes Elo."""
 
     def test_default_simulation_and_live_poll_settings(self) -> None:
-        self.assertEqual(config.DEFAULT_N_SIMS, 250_000)
-        self.assertEqual(config.LIVE_AUTO_N_SIMS, 250_000)
+        self.assertEqual(config.DEFAULT_N_SIMS, 500_000)
+        self.assertEqual(config.LIVE_AUTO_N_SIMS, 500_000)
         self.assertEqual(config.LIVE_MATCH_POLL_SECONDS, 300)
 
     def test_calendar_invariants(self) -> None:
