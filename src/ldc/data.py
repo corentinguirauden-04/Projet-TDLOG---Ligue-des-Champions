@@ -1,6 +1,6 @@
-"""Données de la phase de ligue 2026-27 : Elo par défaut, résultats joués (J1-J4) et calendrier (J5-J8).
+"""Données de la phase de ligue 2026-27 : Elo par défaut, résultats joués (J1-J5) et calendrier (J6-J8).
 
-Source des matchs : UEFA.com (mise à jour du 4 novembre 2026).
+Source des matchs : UEFA.com (mise à jour du 25 novembre 2026).
 Convention : "Domicile - Extérieur", la première équipe reçoit.
 """
 from __future__ import annotations
@@ -97,27 +97,27 @@ Leipzig 2-3 Man City
 Lens 1-9 Como
 Slavia Praha 1-2 Arsenal
 Viking 4-1 Sabah
+Bodo/Glimt 1-0 LASK
+Galatasaray 1-0 Aston Villa
+Arsenal 1-1 Dortmund
+Como 1-0 AEK
+Feyenoord 0-1 Porto
+Man City 2-2 Napoli
+Leipzig 3-1 Lens
+Real Madrid 5-1 PSV
+Slovan Bratislava 0-2 Real Betis
+Sabah 1-4 Barcelona
+Slavia Praha 0-1 Villarreal
+Atletico 2-0 Viking
+Club Brugge 0-3 Liverpool
+Inter 2-0 Stuttgart
+Shakhtar 0-1 Fenerbahce
+Lille 2-1 Bayern
+PSG 2-2 Roma
+Sporting CP 2-2 Man United
 """
 
 _REMAINING = """
-Bodo/Glimt - LASK
-Galatasaray - Aston Villa
-Arsenal - Dortmund
-Como - AEK
-Feyenoord - Porto
-Man City - Napoli
-Leipzig - Lens
-Real Madrid - PSV
-Slovan Bratislava - Real Betis
-Sabah - Barcelona
-Slavia Praha - Villarreal
-Atletico - Viking
-Club Brugge - Liverpool
-Inter - Stuttgart
-Shakhtar - Fenerbahce
-Lille - Bayern
-PSG - Roma
-Sporting CP - Man United
 Viking - Feyenoord
 Villarreal - Sabah
 AEK - Galatasaray

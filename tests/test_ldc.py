@@ -31,7 +31,7 @@ class TestDataLayer(unittest.TestCase):
     def test_calendar_invariants(self) -> None:
         self.assertTrue(data.check())
         self.assertEqual(len(data.TEAMS), 36)
-        self.assertEqual(data.current_matchday(), 4)
+        self.assertEqual(data.current_matchday(), len(data.PLAYED) // 18)
         self.assertEqual(data.total_matchdays(), 8)
 
     def test_validate_elo_map_accepts_default(self) -> None:
@@ -170,34 +170,37 @@ class TestLiveMatchSync(unittest.TestCase):
     def test_arbitrary_nine_finished_matches_in_partial_matchday(self) -> None:
         fixtures = [(h, a) for h, a, _, _ in data.PLAYED] + list(data.REMAINING)
         old_scores = {(h, a): (hg, ag) for h, a, hg, ag in data.PLAYED}
+        base_played = len(data.PLAYED)
+        base_rem = len(data.REMAINING)
+        base_md = data.current_matchday()
         # Neuf affiches terminées de façon non contiguë : elles ne forment pas un préfixe
-        # du calendrier J5. C'est le cas réel à gérer pendant deux soirées européennes.
+        # de la journée en cours. C'est le cas réel à gérer pendant deux soirées européennes.
         completed_indexes = set(range(0, 18, 2))
         api_matches = []
         for idx, (home, away) in enumerate(fixtures):
-            if idx < len(data.PLAYED):
+            if idx < base_played:
                 hg, ag = old_scores[(home, away)]
                 api_matches.append(self._api_match(home, away, "FINISHED", hg, ag))
-            elif idx - len(data.PLAYED) in completed_indexes:
+            elif idx - base_played in completed_indexes:
                 api_matches.append(self._api_match(home, away, "FINISHED", 2, 1))
             else:
                 api_matches.append(self._api_match(home, away, "SCHEDULED"))
 
         state = match_api.build_match_state({"matches": api_matches})
-        self.assertEqual(len(state["played"]), 81)
-        self.assertEqual(len(state["remaining"]), 63)
+        self.assertEqual(len(state["played"]), base_played + 9)
+        self.assertEqual(len(state["remaining"]), base_rem - 9)
         self.assertTrue(data.check(played=state["played"], remaining=state["remaining"]))
 
         progress = data.matchday_progress(
             n_played=len(state["played"]),
             n_remaining=len(state["remaining"]),
         )
-        self.assertEqual(progress["in_progress"], 5)
+        self.assertEqual(progress["in_progress"], base_md + 1)
         self.assertEqual(progress["played_in_current"], 9)
 
         table = simulation.current_table(played=state["played"])
-        self.assertEqual(sum(row["played"] == 5 for row in table), 18)
-        self.assertEqual(sum(row["played"] == 4 for row in table), 18)
+        self.assertEqual(sum(row["played"] == base_md + 1 for row in table), 18)
+        self.assertEqual(sum(row["played"] == base_md for row in table), 18)
 
         sim = simulation.simulate(
             n_sims=200,
@@ -206,8 +209,8 @@ class TestLiveMatchSync(unittest.TestCase):
             played=state["played"],
             remaining=state["remaining"],
         )
-        self.assertEqual(sim["n_played"], 81)
-        self.assertEqual(len(sim["remaining"]), 63)
+        self.assertEqual(sim["n_played"], base_played + 9)
+        self.assertEqual(len(sim["remaining"]), base_rem - 9)
 
     def test_live_match_is_displayed_but_not_counted_as_finished(self) -> None:
         fixtures = [(h, a) for h, a, _, _ in data.PLAYED] + list(data.REMAINING)
@@ -224,8 +227,8 @@ class TestLiveMatchSync(unittest.TestCase):
                 api_matches.append(self._api_match(home, away, "SCHEDULED"))
 
         state = match_api.build_match_state({"matches": api_matches})
-        self.assertEqual(len(state["played"]), 72)
-        self.assertEqual(len(state["remaining"]), 72)
+        self.assertEqual(len(state["played"]), len(data.PLAYED))
+        self.assertEqual(len(state["remaining"]), len(data.REMAINING))
         self.assertEqual(len(state["live"]), 1)
         self.assertEqual(state["live"][0]["score_home"], 1)
         self.assertEqual(state["live"][0]["score_away"], 0)
@@ -326,7 +329,7 @@ class TestWebController(unittest.TestCase):
         self.assertEqual(status, 200)
         state = json.loads(raw.decode("utf-8"))
         self.assertEqual(state["active_source"], "clubelo")
-        self.assertEqual(state["matchday"], 4)
+        self.assertEqual(state["matchday"], data.current_matchday())
         self.assertEqual(len(state["teams"]), 36)
         self.assertEqual(len(state["played"]), len(data.PLAYED))
         self.assertEqual(len(state["remaining"]), len(data.REMAINING))
@@ -359,34 +362,38 @@ class TestWebController(unittest.TestCase):
                 self.assertGreaterEqual(row["home_worst_rank"], row["home_best_rank"])
                 self.assertGreaterEqual(row["away_worst_rank"], row["away_best_rank"])
 
-    def test_partial_matchday_nov24_played_nov25_remaining(self) -> None:
-        """Simule les 9 matchs du 24 novembre (J5) joués et laisse les 9 du 25 novembre à venir."""
+    def test_partial_matchday_half_played_half_remaining(self) -> None:
+        """Simule les 9 premiers matchs de la prochaine journée joués et laisse les 9 autres à venir."""
         rng = np.random.default_rng(20261124)
-        nov24_fixtures = data.REMAINING[:9]
-        nov25_and_rest = data.REMAINING[9:]
+        base_played = len(data.PLAYED)
+        base_rem = len(data.REMAINING)
+        base_md = data.current_matchday()
+        next_md = base_md + 1
+        first_half = data.REMAINING[:9]
+        second_half_and_rest = data.REMAINING[9:]
 
-        simulated_nov24: list[tuple[str, str, int, int]] = []
-        for home, away in nov24_fixtures:
+        simulated_half: list[tuple[str, str, int, int]] = []
+        for home, away in first_half:
             lh, la = simulation.lambdas_home(home, away, elo=data.DEFAULT_ELO)
-            simulated_nov24.append((home, away, int(rng.poisson(float(lh))), int(rng.poisson(float(la)))))
+            simulated_half.append((home, away, int(rng.poisson(float(lh))), int(rng.poisson(float(la)))))
 
-        played_81 = list(data.PLAYED) + simulated_nov24
-        self.assertEqual(len(played_81), 81)
-        self.assertEqual(len(nov25_and_rest), 63)
+        played_partial = list(data.PLAYED) + simulated_half
+        self.assertEqual(len(played_partial), base_played + 9)
+        self.assertEqual(len(second_half_and_rest), base_rem - 9)
 
         # 1. Invariants calendrier et statut d'avancement.
-        self.assertTrue(data.check(played=played_81, remaining=nov25_and_rest))
-        progress = data.matchday_progress(n_played=len(played_81), n_remaining=len(nov25_and_rest))
-        self.assertEqual(progress["completed"], 4)
-        self.assertEqual(progress["in_progress"], 5)
+        self.assertTrue(data.check(played=played_partial, remaining=second_half_and_rest))
+        progress = data.matchday_progress(n_played=len(played_partial), n_remaining=len(second_half_and_rest))
+        self.assertEqual(progress["completed"], base_md)
+        self.assertEqual(progress["in_progress"], next_md)
         self.assertEqual(progress["played_in_current"], 9)
         self.assertEqual(progress["total"], 8)
-        self.assertEqual(progress["label"], "journée 5 en cours (9/18)")
+        self.assertEqual(progress["label"], f"journée {next_md} en cours (9/18)")
 
-        # 2. Classement intermédiaire : 18 équipes à 5 matchs joués, 18 à 4 matchs joués.
-        table = simulation.current_table(played=played_81)
-        self.assertEqual(sum(r["played"] == 5 for r in table), 18)
-        self.assertEqual(sum(r["played"] == 4 for r in table), 18)
+        # 2. Classement intermédiaire : 18 équipes à (base_md + 1) matchs joués, 18 à base_md.
+        table = simulation.current_table(played=played_partial)
+        self.assertEqual(sum(r["played"] == next_md for r in table), 18)
+        self.assertEqual(sum(r["played"] == base_md for r in table), 18)
 
         # 3. Simulation Monte Carlo + indicateurs + export matchs restants.
         sim = simulation.simulate(
@@ -394,36 +401,38 @@ class TestWebController(unittest.TestCase):
             seed=42,
             elo=data.DEFAULT_ELO,
             elo_date="2026-11-24",
-            played=played_81,
-            remaining=nov25_and_rest,
+            played=played_partial,
+            remaining=second_half_and_rest,
         )
-        self.assertEqual(sim["n_played"], 81)
+        self.assertEqual(sim["n_played"], base_played + 9)
         dist = simulation.rank_distribution(sim)
         np.testing.assert_allclose(dist.sum(axis=1), 1.0, atol=1e-9)
         imp = simulation.match_importance(sim)
-        self.assertEqual(len(imp["PSG"]), 63)
+        self.assertEqual(len(imp["PSG"]), base_rem - 9)
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
             matches_json = tmp_dir / "matchs_restants.json"
             pipeline.write_remaining_matches_json(sim, imp, matches_json)
             rows = json.loads(matches_json.read_text(encoding="utf-8"))
-            self.assertEqual(len(rows), 63)
+            self.assertEqual(len(rows), base_rem - 9)
 
-            # Répartition exacte des journées : 9 restants en J5 (25 nov), puis 18 en J6, J7, J8.
+            # Répartition exacte des journées restantes : 9 sur la journée en cours, 18 sur les suivantes.
             md_counts: dict[int, int] = {}
             for row in rows:
                 md_counts[row["matchday"]] = md_counts.get(row["matchday"], 0) + 1
-            self.assertEqual(md_counts, {5: 9, 6: 18, 7: 18, 8: 18})
+            expected_counts = {next_md: 9, **{md: 18 for md in range(next_md + 1, 9)}}
+            self.assertEqual(md_counts, expected_counts)
 
-            # 4. Payload calendrier web : J5 fusionne bien 9 joués + 9 à venir.
-            schedule = web_server._schedule_payload("clubelo", played_src=played_81, remaining_src=nov25_and_rest)
-            self.assertEqual(sum(m["matchday"] == 5 for m in schedule["played"]), 9)
-            self.assertEqual(sum(m["matchday"] == 5 for m in schedule["remaining"]), 9)
-            self.assertEqual(sum(m["matchday"] == 6 for m in schedule["remaining"]), 18)
+            # 4. Payload calendrier web : la journée en cours fusionne bien 9 joués + 9 à venir.
+            schedule = web_server._schedule_payload(
+                "clubelo", played_src=played_partial, remaining_src=second_half_and_rest
+            )
+            self.assertEqual(sum(m["matchday"] == next_md for m in schedule["played"]), 9)
+            self.assertEqual(sum(m["matchday"] == next_md for m in schedule["remaining"]), 9)
 
             # 5. Libellé dynamique et rendu des visuels sans erreur.
-            self.assertIn("journée 5 en cours (9/18)", visualization._matchday_date_label(sim))
+            self.assertIn(f"journée {next_md} en cours (9/18)", visualization._matchday_date_label(sim))
             visualization.team_card("Arsenal", sim, table, tmp_dir / "arsenal.png")
             visualization.team_points_card("PSG", sim, table, tmp_dir / "psg_pts.png")
             visualization.overview(sim, table, tmp_dir / "overview.png")
