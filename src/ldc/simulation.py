@@ -342,14 +342,15 @@ def team_qualification_by_points(sim: dict, team: str) -> dict[str, np.ndarray]:
 
 
 def match_importance(sim: dict) -> dict[str, list[dict]]:
-    """Calcule l'importance de chaque match restant pour chaque équipe selon 3 indicateurs :
+    """Mesure l'effet de chaque résultat possible sur le classement final d'une équipe.
 
-    - `importance` : plus grand écart de classement final moyen (en places) entre les 3 issues (1 / N / 2).
-    - `top8_importance` : plus grand écart de probabilité de finir Top 8 (entre 0 et 1).
-    - `top24_importance` : plus grand écart de probabilité de finir Top 24 (entre 0 et 1).
+    Pour chaque match restant et chaque équipe, conserve :
+      - le rang final moyen conditionnel à victoire domicile / nul / victoire extérieur ;
+      - les probabilités conditionnelles de Top 8 et de Top 24 pour ces trois issues ;
+      - les amplitudes (max - min) utilisées pour classer les matchs clés.
 
-    Utilise des produits matriciels par blocs (BLAS) pour rester rapide (~1 s à 500 000 tirages)
-    avec une empreinte mémoire maîtrisée et une accumulation exacte en float64.
+    Une issue est considérée exploitable à partir de max(30, 1 % des simulations).
+    Les calculs sont vectorisés par blocs pour maîtriser la mémoire.
     """
     ranks = sim["ranks"]
     outcomes = sim["match_outcomes"]
@@ -360,6 +361,7 @@ def match_importance(sim: dict) -> dict[str, list[dict]]:
 
     n_matches = len(remaining)
     n_teams = len(teams)
+    # Convention outcome : 0 = victoire extérieur, 1 = nul, 2 = victoire domicile.
     counts = np.zeros((3, n_matches), dtype=np.int64)
     sum_rank = np.zeros((3, n_matches, n_teams), dtype=np.float64)
     sum_top8 = np.zeros((3, n_matches, n_teams), dtype=np.float64)
@@ -374,67 +376,96 @@ def match_importance(sim: dict) -> dict[str, list[dict]]:
         t8_f = (r_blk <= 8).astype(np.float32)
         t24_f = (r_blk <= 24).astype(np.float32)
         for o in (0, 1, 2):
-            m_f = (o_blk == o).astype(np.float32)
-            counts[o] += m_f.sum(axis=0, dtype=np.int64)
-            sum_rank[o] += (m_f.T @ r_f).astype(np.float64)
-            sum_top8[o] += (m_f.T @ t8_f).astype(np.float64)
-            sum_top24[o] += (m_f.T @ t24_f).astype(np.float64)
+            mask = (o_blk == o).astype(np.float32)
+            counts[o] += mask.sum(axis=0, dtype=np.int64)
+            sum_rank[o] += (mask.T @ r_f).astype(np.float64)
+            sum_top8[o] += (mask.T @ t8_f).astype(np.float64)
+            sum_top24[o] += (mask.T @ t24_f).astype(np.float64)
 
-    imp_score = np.zeros((n_matches, n_teams), dtype=float)
-    imp_best_rank = np.zeros((n_matches, n_teams), dtype=float)
-    imp_worst_rank = np.zeros((n_matches, n_teams), dtype=float)
+    # NaN permet de distinguer une issue insuffisamment représentée d'une vraie probabilité nulle.
+    rank_by_outcome = np.full((3, n_matches, n_teams), np.nan, dtype=np.float64)
+    top8_by_outcome = np.full((3, n_matches, n_teams), np.nan, dtype=np.float64)
+    top24_by_outcome = np.full((3, n_matches, n_teams), np.nan, dtype=np.float64)
+
+    # Valeurs de repli non conditionnelles : les champs historiques best/worst/min/max
+    # doivent toujours rester numériques (export JSON et consommateurs existants).
+    # Les trois champs conditionnels par issue restent à None lorsqu'une issue est rare.
+    baseline_rank = ranks.mean(axis=0, dtype=np.float64)
+    baseline_top8 = (ranks <= 8).mean(axis=0, dtype=np.float64)
+    baseline_top24 = (ranks <= 24).mean(axis=0, dtype=np.float64)
+
+    imp_rank = np.zeros((n_matches, n_teams), dtype=float)
+    best_rank = np.broadcast_to(baseline_rank, (n_matches, n_teams)).copy()
+    worst_rank = np.broadcast_to(baseline_rank, (n_matches, n_teams)).copy()
     imp_top8 = np.zeros((n_matches, n_teams), dtype=float)
-    imp_top8_min = np.zeros((n_matches, n_teams), dtype=float)
-    imp_top8_max = np.zeros((n_matches, n_teams), dtype=float)
+    top8_min = np.broadcast_to(baseline_top8, (n_matches, n_teams)).copy()
+    top8_max = np.broadcast_to(baseline_top8, (n_matches, n_teams)).copy()
     imp_top24 = np.zeros((n_matches, n_teams), dtype=float)
-    imp_top24_min = np.zeros((n_matches, n_teams), dtype=float)
-    imp_top24_max = np.zeros((n_matches, n_teams), dtype=float)
+    top24_min = np.broadcast_to(baseline_top24, (n_matches, n_teams)).copy()
+    top24_max = np.broadcast_to(baseline_top24, (n_matches, n_teams)).copy()
 
     for m_idx in range(n_matches):
         valid_o = [o for o in (0, 1, 2) if int(counts[o, m_idx]) >= min_samples]
         if len(valid_o) < 2:
             continue
 
-        mean_r = [sum_rank[o, m_idx] / counts[o, m_idx] for o in valid_o]
-        best_r = np.min(mean_r, axis=0)
-        worst_r = np.max(mean_r, axis=0)
-        imp_score[m_idx] = worst_r - best_r
-        imp_best_rank[m_idx] = best_r
-        imp_worst_rank[m_idx] = worst_r
+        for o in valid_o:
+            denominator = float(counts[o, m_idx])
+            rank_by_outcome[o, m_idx] = sum_rank[o, m_idx] / denominator
+            top8_by_outcome[o, m_idx] = sum_top8[o, m_idx] / denominator
+            top24_by_outcome[o, m_idx] = sum_top24[o, m_idx] / denominator
 
-        mean_8 = [sum_top8[o, m_idx] / counts[o, m_idx] for o in valid_o]
-        min_8 = np.min(mean_8, axis=0)
-        max_8 = np.max(mean_8, axis=0)
-        imp_top8[m_idx] = max_8 - min_8
-        imp_top8_min[m_idx] = min_8
-        imp_top8_max[m_idx] = max_8
+        rank_values = np.stack([rank_by_outcome[o, m_idx] for o in valid_o])
+        top8_values = np.stack([top8_by_outcome[o, m_idx] for o in valid_o])
+        top24_values = np.stack([top24_by_outcome[o, m_idx] for o in valid_o])
 
-        mean_24 = [sum_top24[o, m_idx] / counts[o, m_idx] for o in valid_o]
-        min_24 = np.min(mean_24, axis=0)
-        max_24 = np.max(mean_24, axis=0)
-        imp_top24[m_idx] = max_24 - min_24
-        imp_top24_min[m_idx] = min_24
-        imp_top24_max[m_idx] = max_24
+        best_rank[m_idx] = np.min(rank_values, axis=0)
+        worst_rank[m_idx] = np.max(rank_values, axis=0)
+        imp_rank[m_idx] = worst_rank[m_idx] - best_rank[m_idx]
+
+        top8_min[m_idx] = np.min(top8_values, axis=0)
+        top8_max[m_idx] = np.max(top8_values, axis=0)
+        imp_top8[m_idx] = top8_max[m_idx] - top8_min[m_idx]
+
+        top24_min[m_idx] = np.min(top24_values, axis=0)
+        top24_max[m_idx] = np.max(top24_values, axis=0)
+        imp_top24[m_idx] = top24_max[m_idx] - top24_min[m_idx]
+
+    def maybe_float(array: np.ndarray, outcome: int, m_idx: int, t_idx: int):
+        value = array[outcome, m_idx, t_idx]
+        return float(value) if np.isfinite(value) else None
 
     result: dict[str, list[dict]] = {}
     for t_idx, team in enumerate(teams):
-        entries = [
-            dict(
-                home=home,
-                away=away,
-                is_own=(team == home or team == away),
-                importance=float(imp_score[m_idx, t_idx]),
-                best_rank=float(imp_best_rank[m_idx, t_idx]),
-                worst_rank=float(imp_worst_rank[m_idx, t_idx]),
-                top8_importance=float(imp_top8[m_idx, t_idx]),
-                top8_min=float(imp_top8_min[m_idx, t_idx]),
-                top8_max=float(imp_top8_max[m_idx, t_idx]),
-                top24_importance=float(imp_top24[m_idx, t_idx]),
-                top24_min=float(imp_top24_min[m_idx, t_idx]),
-                top24_max=float(imp_top24_max[m_idx, t_idx]),
-            )
-            for m_idx, (home, away) in enumerate(remaining)
-        ]
+        entries = []
+        for m_idx, (home, away) in enumerate(remaining):
+            entries.append({
+                "home": home,
+                "away": away,
+                "is_own": team == home or team == away,
+                "importance": float(imp_rank[m_idx, t_idx]),
+                "best_rank": float(best_rank[m_idx, t_idx]) if np.isfinite(best_rank[m_idx, t_idx]) else None,
+                "worst_rank": float(worst_rank[m_idx, t_idx]) if np.isfinite(worst_rank[m_idx, t_idx]) else None,
+                "top8_importance": float(imp_top8[m_idx, t_idx]),
+                "top8_min": float(top8_min[m_idx, t_idx]) if np.isfinite(top8_min[m_idx, t_idx]) else None,
+                "top8_max": float(top8_max[m_idx, t_idx]) if np.isfinite(top8_max[m_idx, t_idx]) else None,
+                "top24_importance": float(imp_top24[m_idx, t_idx]),
+                "top24_min": float(top24_min[m_idx, t_idx]) if np.isfinite(top24_min[m_idx, t_idx]) else None,
+                "top24_max": float(top24_max[m_idx, t_idx]) if np.isfinite(top24_max[m_idx, t_idx]) else None,
+                # Valeurs du point de vue du match : home_win / draw / away_win.
+                "rank_home_win": maybe_float(rank_by_outcome, 2, m_idx, t_idx),
+                "rank_draw": maybe_float(rank_by_outcome, 1, m_idx, t_idx),
+                "rank_away_win": maybe_float(rank_by_outcome, 0, m_idx, t_idx),
+                "top8_home_win": maybe_float(top8_by_outcome, 2, m_idx, t_idx),
+                "top8_draw": maybe_float(top8_by_outcome, 1, m_idx, t_idx),
+                "top8_away_win": maybe_float(top8_by_outcome, 0, m_idx, t_idx),
+                "top24_home_win": maybe_float(top24_by_outcome, 2, m_idx, t_idx),
+                "top24_draw": maybe_float(top24_by_outcome, 1, m_idx, t_idx),
+                "top24_away_win": maybe_float(top24_by_outcome, 0, m_idx, t_idx),
+                "home_win_n": int(counts[2, m_idx]),
+                "draw_n": int(counts[1, m_idx]),
+                "away_win_n": int(counts[0, m_idx]),
+            })
         entries.sort(key=lambda item: (-item["importance"], not item["is_own"]))
         result[team] = entries
 

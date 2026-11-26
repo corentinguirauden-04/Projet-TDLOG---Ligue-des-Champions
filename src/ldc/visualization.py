@@ -382,6 +382,39 @@ def position_points_card(position: int, sim, path, n_sims=None, pts_by_rank=None
     plt.close(fig)
 
 
+def _format_percent_fr(value: float | None) -> str:
+    """Formate une probabilité conditionnelle ; None signifie un effectif insuffisant."""
+    if value is None or not np.isfinite(value):
+        return "—"
+    return f"{100.0 * value:.1f}".replace(".", ",") + " %"
+
+
+def _format_rank_fr(value: float | None) -> str:
+    """Formate un rang moyen conditionnel (ex. 12,4e)."""
+    if value is None or not np.isfinite(value):
+        return "—"
+    return f"{value:.1f}".replace(".", ",") + "e"
+
+
+def _team_match_scenario_value(entry: dict, outcome: str, metric: str) -> float | None:
+    """Retourne la valeur conditionnelle pour une issue, du point de vue de l'équipe."""
+    prefix = "rank" if metric == "rank" else metric
+    if outcome == "draw":
+        return entry.get(f"{prefix}_draw")
+
+    home_value = entry.get(f"{prefix}_home_win")
+    away_value = entry.get(f"{prefix}_away_win")
+    if outcome == "home_win":
+        return home_value
+    if outcome == "away_win":
+        return away_value
+    if outcome == "team_win":
+        return home_value if entry["home"] == entry.get("_team") else away_value
+    if outcome == "team_loss":
+        return away_value if entry["home"] == entry.get("_team") else home_value
+    raise ValueError(f"Issue inconnue : {outcome}")
+
+
 def team_important_matches_card(
     team,
     sim,
@@ -391,111 +424,142 @@ def team_important_matches_card(
     importance=None,
     metric: str = "rank",
 ):
-    """Enregistre le Top 10 des matchs restants les plus décisifs pour une équipe.
+    """Dessine les 10 matchs les plus influents, avec les trois issues conditionnelles.
 
-    Paramètre `metric` :
-      - `"rank"`  : écart de classement final moyen (en places) — défaut.
-      - `"top8"`  : écart de probabilité de finir Top 8 (en points de %).
-      - `"top24"` : écart de probabilité de finir Top 24 (en points de %).
+    metric='top8' ou 'top24' affiche P(qualification | issue) en pourcentage.
+    metric='rank' affiche le rang final moyen conditionnel à chaque issue.
+    Le Top 10 est sélectionné globalement, puis réparti en deux tableaux :
+    matchs de l'équipe et matchs des autres équipes.
     """
     if importance is None:
         importance = s.match_importance(sim)
+    if metric not in {"rank", "top8", "top24"}:
+        raise ValueError(f"Métrique inconnue : {metric}")
 
-    cur = next(r for r in table if r["team"] == team)
     n_sims = n_sims or sim["ranks"].shape[0]
-    entries = list(importance[team])
+    current = next(row for row in table if row["team"] == team)
+    impact_key = {"rank": "importance", "top8": "top8_importance", "top24": "top24_importance"}[metric]
 
-    if metric == "top8":
-        entries.sort(key=lambda item: (-item["top8_importance"], not item["is_own"]))
-        top_matches = entries[:10]
-        ordered = list(reversed(top_matches))
-        vals = [100.0 * m["top8_importance"] for m in ordered]
-        title = f"{team.upper()} — MATCHS CLÉS (TOP 8)"
-        subtitle_prefix = "Top 10 par impact sur les chances de Top 8"
-        footnote = "Plus grand écart de probabilité de terminer dans le Top 8 (en points de %) entre les 3 issues possibles du match (1 / N / 2)."
-        empty_note = "Probabilité de Top 8 quasiment figée (< 0.1 % d'écart sur tous les matchs restants)."
-    elif metric == "top24":
-        entries.sort(key=lambda item: (-item["top24_importance"], not item["is_own"]))
-        top_matches = entries[:10]
-        ordered = list(reversed(top_matches))
-        vals = [100.0 * m["top24_importance"] for m in ordered]
-        title = f"{team.upper()} — MATCHS CLÉS (TOP 24)"
-        subtitle_prefix = "Top 10 par impact sur les chances de Top 24"
-        footnote = "Plus grand écart de probabilité de terminer dans le Top 24 (en points de %) entre les 3 issues possibles du match (1 / N / 2)."
-        empty_note = "Probabilité de Top 24 quasiment figée (< 0.1 % d'écart sur tous les matchs restants)."
+    # Sélection du Top 10 global avant séparation en matchs de l'équipe / autres matchs.
+    ranked = sorted(
+        importance[team],
+        key=lambda item: (-item[impact_key], not item["is_own"], item["home"], item["away"]),
+    )[:10]
+    own_matches = [(rank, item) for rank, item in enumerate(ranked, start=1) if item["is_own"]]
+    other_matches = [(rank, item) for rank, item in enumerate(ranked, start=1) if not item["is_own"]]
+
+    if metric == "top24":
+        title = f"{team.upper()} — TOP 10 MATCHS CLÉS (TOP 24)"
+        description = f"Probabilité de terminer dans le Top 24 de {team} selon le résultat de chaque match"
+        own_headers = (f"VICTOIRE {team.upper()}", "NUL", f"DÉFAITE {team.upper()}")
+        other_headers = ("VICTOIRE DOMICILE", "NUL", "VICTOIRE EXTÉRIEUR")
+        impact_label = "Impact : écart maximal entre les probabilités conditionnelles de Top 24 (points de %)."
+    elif metric == "top8":
+        title = f"{team.upper()} — TOP 10 MATCHS CLÉS (TOP 8)"
+        description = f"Probabilité de terminer dans le Top 8 de {team} selon le résultat de chaque match"
+        own_headers = (f"VICTOIRE {team.upper()}", "NUL", f"DÉFAITE {team.upper()}")
+        other_headers = ("VICTOIRE DOMICILE", "NUL", "VICTOIRE EXTÉRIEUR")
+        impact_label = "Impact : écart maximal entre les probabilités conditionnelles de Top 8 (points de %)."
     else:
-        entries.sort(key=lambda item: (-item["importance"], not item["is_own"]))
-        top_matches = entries[:10]
-        ordered = list(reversed(top_matches))
-        vals = [m["importance"] for m in ordered]
-        title = f"{team.upper()} — MATCHS CLÉS"
-        subtitle_prefix = "Top 10 des matchs décisifs (classement)"
-        footnote = "Plus grand écart de classement final moyen (en places) entre les 3 issues possibles du match (1 / N / 2)."
-        empty_note = "Aucun match restant n'a d'impact mesurable sur le classement."
+        title = f"{team.upper()} — TOP 10 MATCHS CLÉS (CLASSEMENT)"
+        description = f"Rang final moyen de {team} selon le résultat de chaque match"
+        own_headers = (f"VICTOIRE {team.upper()}", "NUL", f"DÉFAITE {team.upper()}")
+        other_headers = ("VICTOIRE DOMICILE", "NUL", "VICTOIRE EXTÉRIEUR")
+        impact_label = "Impact : écart maximal entre les rangs finaux moyens selon les issues (en places)."
 
-    labels = [f"{m['home']} - {m['away']}" for m in ordered]
-    cols = [C_TOP8 if m["is_own"] else C_PLAY for m in ordered]
-
-    fig = _new_fig((12, 6.75))
-    ax = fig.add_axes([0.27, 0.14, 0.42, 0.63], facecolor="none")
-    y = np.arange(len(labels))
-
-    if max(vals, default=0.0) < 0.05:
-        ax.axis("off")
-        fig.text(
-            0.50,
-            0.46,
-            empty_note,
-            ha="center",
-            va="center",
-            fontsize=12.5,
-            fontweight="bold",
-            color=TXT,
-            bbox=dict(facecolor="#162266", edgecolor=MUTED, alpha=0.94, pad=14),
-        )
-    else:
-        ax.barh(y, vals, color=cols, height=0.62, zorder=3)
-        x_max = max(max(vals, default=1.0) * 1.08, 1.0)
-        for yi, m, v in zip(y, ordered, vals):
-            if metric == "top8":
-                txt = f"+{v:.1f} pts ({pct(m['top8_min'])} → {pct(m['top8_max'])})"
-            elif metric == "top24":
-                txt = f"+{v:.1f} pts ({pct(m['top24_min'])} → {pct(m['top24_max'])})"
-            else:
-                unit = "place" if round(v, 1) <= 1.0 else "places"
-                txt = f"{v:.1f} {unit} (rang moyen : {m['worst_rank']:.1f}e → {m['best_rank']:.1f}e)"
-            ax.text(v + x_max * 0.025, yi, txt, va="center", fontsize=9, color=TXT, fontweight="bold")
-
-        ax.set_xlim(0, x_max)
-        ax.set_ylim(-0.6, len(labels) - 0.4)
-        ax.set_yticks(y)
-        ax.set_yticklabels(labels, fontsize=10.5, color=TXT)
-        ax.set_xticks([])
-        for sp in ax.spines.values():
-            sp.set_visible(False)
-        ax.tick_params(length=0)
-
-    fig.text(0.07, 0.92, title, fontsize=25, fontweight="bold", color=TXT, va="center")
+    fig = _new_fig((12.5, 8.25))
+    fig.text(0.055, 0.952, title, fontsize=19.5, fontweight="bold", color=TXT, va="center")
     fig.text(
-        0.07,
-        0.86,
-        f"{subtitle_prefix}  ·  Actuel : {cur['rank']}e ({cur['pts']} pts)  ·  "
-        f"{_matchday_date_label(sim).capitalize()}",
-        fontsize=11.2,
-        color=MUTED,
-        va="center",
+        0.056, 0.908,
+        f"Classement actuel : {current['rank']}e ({current['pts']} pts)  ·  "
+        f"{_matchday_date_label(sim).capitalize()}  ·  {n_sims:,} simulations".replace(",", " "),
+        fontsize=9.2, color=MUTED, va="center",
     )
+    fig.text(0.056, 0.866, description, fontsize=10.2, color=TXT, va="center")
 
-    for k, (lab, col) in enumerate([("Match de l'équipe", C_TOP8), ("Match d'autres équipes", C_PLAY)]):
-        x = 0.27 + k * 0.25
-        fig.patches.append(Rectangle((x, 0.795), 0.014, 0.016, transform=fig.transFigure, facecolor=col))
-        fig.text(x + 0.02, 0.803, lab, fontsize=10, color=TXT, va="center")
+    x_match, x_first, x_draw, x_third, x_impact = 0.075, 0.645, 0.755, 0.865, 0.935
+    row_h = 0.0415
+    row_box_h = 0.032
 
-    fig.text(0.07, 0.055, footnote, fontsize=8.8, color=MUTED, va="center")
-    _draw_footer(fig, n_sims)
-    fig.savefig(path, dpi=130, facecolor=BG)
+    def draw_section(
+        y_title: float,
+        section_title: str,
+        headers: tuple[str, str, str],
+        rows: list[tuple[int, dict]],
+        own: bool,
+    ) -> float:
+        fig.text(0.062, y_title, section_title, fontsize=11.0, fontweight="bold", color=TXT, va="center")
+        y_header = y_title - 0.040
+        header_font = 6.4 if metric == "rank" else 7.0
+        impact_header = "IMPACT"
+        for x, label, color in (
+            (x_match, "MATCH", MUTED),
+            (x_first, headers[0], C_TOP8),
+            (x_draw, headers[1], C_PLAY),
+            (x_third, headers[2], C_OUT),
+            (x_impact, impact_header, MUTED),
+        ):
+            fig.text(
+                x, y_header, label, fontsize=header_font, fontweight="bold", color=color,
+                ha="left" if x == x_match else "center", va="center",
+            )
+
+        y = y_header - 0.035
+        if not rows:
+            fig.text(x_match, y, "Aucun match dans le Top 10.", fontsize=8.0, color=MUTED, va="center")
+            return y - 0.045
+
+        for row_index, (global_rank, original_entry) in enumerate(rows):
+            entry = dict(original_entry)
+            entry["_team"] = team
+            rect_y = y - row_box_h / 2
+            fig.patches.append(Rectangle(
+                (0.052, rect_y), 0.896, row_box_h,
+                transform=fig.transFigure,
+                facecolor=("#ffffff12" if row_index % 2 == 0 else "#ffffff09"),
+                edgecolor="#ffffff18", linewidth=0.45,
+            ))
+            fig.text(
+                x_match, y, f"{global_rank:02d}   {entry['home']} – {entry['away']}",
+                fontsize=7.9, color=TXT, va="center",
+            )
+
+            if own:
+                outcome_keys = ("team_win", "draw", "team_loss")
+            else:
+                outcome_keys = ("home_win", "draw", "away_win")
+            values = [_team_match_scenario_value(entry, key, metric) for key in outcome_keys]
+            formatter = _format_rank_fr if metric == "rank" else _format_percent_fr
+            for x, value, color in zip((x_first, x_draw, x_third), values, (C_TOP8, C_PLAY, C_OUT)):
+                fig.text(x, y, formatter(value), fontsize=8.1, fontweight="bold", color=color,
+                         ha="center", va="center")
+
+            raw_impact = float(entry[impact_key])
+            impact_value = raw_impact if metric == "rank" else 100.0 * raw_impact
+            impact_text = f"+{impact_value:.1f}".replace(".", ",")
+            fig.text(x_impact, y, impact_text, fontsize=7.9, fontweight="bold", color=TXT,
+                     ha="center", va="center")
+            y -= row_h
+        return y - 0.045
+
+    y = draw_section(
+        0.810, f"1. MATCHS DE {team.upper()}", own_headers, own_matches, own=True
+    )
+    draw_section(y, "2. MATCHS DES AUTRES ÉQUIPES", other_headers, other_matches, own=False)
+
+    fig.text(0.056, 0.073, impact_label, fontsize=7.1, color=MUTED, va="center")
+    fig.text(
+        0.056, 0.047,
+        "— : issue observée dans moins de 1 % des simulations (effectif insuffisant).",
+        fontsize=7.0, color=MUTED, va="center",
+    )
+    fig.text(
+        0.056, 0.022,
+        f"Monte Carlo : {n_sims:,} simulations · Modèle Elo + loi de Poisson".replace(",", " "),
+        fontsize=7.0, color=MUTED, va="center",
+    )
+    fig.savefig(path, dpi=150, facecolor=BG)
     plt.close(fig)
-
 
 def overview(sim, table, path, qualifications=None):
     """Vue d'ensemble : les 36 équipes triées par probabilité Top 8 décroissante."""

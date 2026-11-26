@@ -1,4 +1,4 @@
-"""Données de la phase de ligue 2026-27 : Elo par défaut, résultats joués (J1-J4) et calendrier (J5-J8).
+"""Données de la phase de ligue 2026-27 : Elo, résultats et calendrier officiel des huit journées.
 
 Source des matchs : UEFA.com (mise à jour du 4 novembre 2026).
 Convention : "Domicile - Extérieur", la première équipe reçoit.
@@ -6,6 +6,7 @@ Convention : "Domicile - Extérieur", la première équipe reçoit.
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 from ldc.config import ELO_FILE, MAX_ELO, MIN_ELO
@@ -193,14 +194,48 @@ REMAINING: list[tuple[str, str]] = [
 ]
 TEAMS: list[str] = sorted(DEFAULT_ELO)
 
+# Dates officielles des huit journées de la phase de ligue 2026-27.
+# Chaque tuple contient le premier et le dernier jour civil de la journée UEFA.
+MATCHDAY_DATES: dict[int, tuple[date, date]] = {
+    1: (date(2026, 9, 8), date(2026, 9, 10)),
+    2: (date(2026, 10, 13), date(2026, 10, 14)),
+    3: (date(2026, 10, 20), date(2026, 10, 21)),
+    4: (date(2026, 11, 3), date(2026, 11, 4)),
+    5: (date(2026, 11, 24), date(2026, 11, 25)),
+    6: (date(2026, 12, 8), date(2026, 12, 9)),
+    7: (date(2027, 1, 19), date(2027, 1, 20)),
+    8: (date(2027, 1, 27), date(2027, 1, 27)),
+}
+
+
+def today_date() -> date:
+    """Retourne la date locale de la machine (séparée pour faciliter les tests)."""
+    return date.today()
+
 
 def matches_per_matchday() -> int:
     """Nombre de matchs par journée complète (18 pour 36 clubs)."""
     return max(1, len(TEAMS) // 2)
 
 
+def matchday_for_date(today: date | None = None) -> int:
+    """Dernière journée ayant commencé à la date donnée (0 avant la J1).
+
+    Pendant les dates d'une journée, renvoie cette journée. Entre deux journées,
+    renvoie la dernière journée du calendrier déjà passée.
+    """
+    current_date = today or today_date()
+    latest_started = 0
+    for matchday, (start, _end) in MATCHDAY_DATES.items():
+        if current_date >= start:
+            latest_started = matchday
+        else:
+            break
+    return latest_started
+
+
 def current_matchday(played: list[tuple[str, str, int, int]] | None = None) -> int:
-    """Nombre de journées complètes déjà disputées."""
+    """Nombre de journées complètes d'après les résultats effectivement joués."""
     p = PLAYED if played is None else played
     return len(p) // matches_per_matchday()
 
@@ -229,23 +264,48 @@ def matchday_for_remaining(idx: int, n_played: int | None = None) -> int:
 def matchday_progress(
     n_played: int | None = None,
     n_remaining: int | None = None,
+    today: date | None = None,
 ) -> dict:
-    """Synthèse dynamique de l'avancement des journées (complète ou en cours)."""
+    """Avancement calendaire des journées, avec le nombre de résultats déjà reçus.
+
+    Les dates UEFA déterminent la journée en cours ou la dernière journée passée.
+    Le nombre de matchs joués sert uniquement à quantifier l'avancement pendant
+    une journée, et ne décide plus du numéro de journée.
+    """
     mpd = matches_per_matchday()
     played_count = len(PLAYED) if n_played is None else int(n_played)
     rem_count = len(REMAINING) if n_remaining is None else int(n_remaining)
-    completed = played_count // mpd
-    played_in_current = played_count % mpd
-    in_progress = (completed + 1) if played_in_current > 0 else None
-    total = (played_count + rem_count) // mpd
+    current_date = today or today_date()
+    calendar_matchday = matchday_for_date(current_date)
+    in_progress = None
+    for matchday, (start, end) in MATCHDAY_DATES.items():
+        if start <= current_date <= end:
+            in_progress = matchday
+            break
 
     if in_progress is not None:
+        completed = in_progress - 1
+        played_in_current = max(0, min(played_count - completed * mpd, mpd))
         label = f"journée {in_progress} en cours ({played_in_current}/{mpd})"
-    elif completed == 0:
-        label = "avant la 1re journée"
     else:
-        label = f"après la journée {completed}"
+        completed = calendar_matchday
+        if completed == 0:
+            played_in_current = 0
+            label = "avant la 1re journée"
+        else:
+            # Après la fenêtre officielle, on signale aussi une éventuelle
+            # synchronisation incomplète des résultats de la dernière journée.
+            played_in_current = max(0, min(played_count - (completed - 1) * mpd, mpd))
+            if played_in_current < mpd:
+                label = (
+                    f"journée {completed} passée au calendrier "
+                    f"({played_in_current}/{mpd} résultats confirmés)"
+                )
+            else:
+                label = f"après la journée {completed}"
 
+    total = (played_count + rem_count) // mpd
+    next_matchday = in_progress if in_progress is not None else (completed + 1 if completed < len(MATCHDAY_DATES) else None)
     return {
         "completed": completed,
         "in_progress": in_progress,
@@ -253,6 +313,9 @@ def matchday_progress(
         "matches_per_day": mpd,
         "total": total,
         "label": label,
+        "calendar_matchday": calendar_matchday,
+        "next_matchday": next_matchday,
+        "date": current_date.isoformat(),
     }
 
 

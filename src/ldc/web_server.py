@@ -298,8 +298,13 @@ class LdcRequestHandler(BaseHTTPRequestHandler):
                     "active_source": active,
                     "output_folder": active,
                     "available": active in available_ids,
+                    # La journée affichée est déterminée par les dates UEFA,
+                    # indépendamment du nombre de résultats déjà synchronisés.
                     "matchday": progress["completed"],
                     "matchday_in_progress": progress["in_progress"],
+                    "calendar_matchday": progress["calendar_matchday"],
+                    "next_matchday": progress["next_matchday"],
+                    "calendar_date": progress["date"],
                     "played_in_current_md": progress["played_in_current"],
                     "matches_per_day": progress["matches_per_day"],
                     "matchday_label": progress["label"],

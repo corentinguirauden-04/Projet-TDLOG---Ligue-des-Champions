@@ -10,6 +10,8 @@ import json
 import sys
 import tempfile
 import unittest
+from datetime import date
+from unittest.mock import patch
 from pathlib import Path
 
 import numpy as np
@@ -33,6 +35,44 @@ class TestDataLayer(unittest.TestCase):
         self.assertEqual(len(data.TEAMS), 36)
         self.assertEqual(data.current_matchday(), 4)
         self.assertEqual(data.total_matchdays(), 8)
+
+    def test_matchday_calendar_dates(self) -> None:
+        self.assertEqual(data.matchday_for_date(date(2026, 9, 7)), 0)
+        self.assertEqual(data.matchday_for_date(date(2026, 9, 8)), 1)
+        self.assertEqual(data.matchday_for_date(date(2026, 9, 11)), 1)
+        self.assertEqual(data.matchday_for_date(date(2026, 10, 13)), 2)
+        self.assertEqual(data.matchday_for_date(date(2026, 10, 20)), 3)
+        self.assertEqual(data.matchday_for_date(date(2026, 11, 3)), 4)
+        self.assertEqual(data.matchday_for_date(date(2026, 11, 24)), 5)
+        self.assertEqual(data.matchday_for_date(date(2026, 11, 26)), 5)
+        self.assertEqual(data.matchday_for_date(date(2026, 12, 8)), 6)
+        self.assertEqual(data.matchday_for_date(date(2027, 1, 19)), 7)
+        self.assertEqual(data.matchday_for_date(date(2027, 1, 27)), 8)
+        self.assertEqual(data.matchday_for_date(date(2027, 1, 28)), 8)
+
+    def test_matchday_progress_uses_dates_not_result_count(self) -> None:
+        during_j5 = data.matchday_progress(
+            n_played=81, n_remaining=63, today=date(2026, 11, 24)
+        )
+        self.assertEqual(during_j5["completed"], 4)
+        self.assertEqual(during_j5["in_progress"], 5)
+        self.assertEqual(during_j5["played_in_current"], 9)
+
+        after_j5 = data.matchday_progress(
+            n_played=81, n_remaining=63, today=date(2026, 11, 26)
+        )
+        self.assertEqual(after_j5["completed"], 5)
+        self.assertIsNone(after_j5["in_progress"])
+        self.assertEqual(after_j5["calendar_matchday"], 5)
+        self.assertEqual(after_j5["next_matchday"], 6)
+        self.assertEqual(
+            after_j5["label"],
+            "journée 5 passée au calendrier (9/18 résultats confirmés)",
+        )
+        fully_synced = data.matchday_progress(
+            n_played=90, n_remaining=54, today=date(2026, 11, 26)
+        )
+        self.assertEqual(fully_synced["label"], "après la journée 5")
 
     def test_validate_elo_map_accepts_default(self) -> None:
         cleaned, err = data.validate_elo_map(data.DEFAULT_ELO)
@@ -191,6 +231,7 @@ class TestLiveMatchSync(unittest.TestCase):
         progress = data.matchday_progress(
             n_played=len(state["played"]),
             n_remaining=len(state["remaining"]),
+            today=date(2026, 11, 24),
         )
         self.assertEqual(progress["in_progress"], 5)
         self.assertEqual(progress["played_in_current"], 9)
@@ -322,14 +363,41 @@ class TestWebController(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertIn(expected_fragment, raw.decode("utf-8"))
 
-        status, raw = self._dispatch_request("GET", "/api/state?source=clubelo")
+        # Ce test vérifie la route HTTP, pas la synchronisation réelle ni la pipeline
+        # de 500 000 simulations : toutes les dépendances variables sont isolées.
+        fake_schedule = {
+            "played": [{"winner": "home"}],
+            "remaining": [{
+                "p_home": 0.45, "p_draw": 0.25, "p_away": 0.30,
+                "home_imp": 0.12, "away_imp": 0.08,
+            }],
+        }
+        with (
+            patch.object(data, "today_date", return_value=date(2026, 11, 26)),
+            patch.object(match_api, "get_match_state", return_value=match_api.static_match_state()),
+            patch.object(
+                web_server, "_source_status",
+                return_value=[{"id": "clubelo", "label": "ClubElo", "available": True, "folder": "clubelo"}],
+            ),
+            patch.object(
+                web_server, "_read_source_results",
+                return_value=[{"team": team} for team in data.TEAMS],
+            ),
+            patch.object(web_server, "_schedule_payload", return_value=fake_schedule),
+        ):
+            status, raw = self._dispatch_request("GET", "/api/state?source=clubelo")
+
         self.assertEqual(status, 200)
         state = json.loads(raw.decode("utf-8"))
         self.assertEqual(state["active_source"], "clubelo")
-        self.assertEqual(state["matchday"], 4)
+        self.assertEqual(state["matchday"], 5)
+        self.assertEqual(state["calendar_matchday"], 5)
+        self.assertEqual(state["next_matchday"], 6)
+        self.assertEqual(state["calendar_date"], "2026-11-26")
+        self.assertIsNone(state["matchday_in_progress"])
         self.assertEqual(len(state["teams"]), 36)
-        self.assertEqual(len(state["played"]), len(data.PLAYED))
-        self.assertEqual(len(state["remaining"]), len(data.REMAINING))
+        self.assertEqual(len(state["played"]), 1)
+        self.assertEqual(len(state["remaining"]), 1)
         self.assertIn(state["played"][0]["winner"], ("home", "draw", "away"))
         first_rem = state["remaining"][0]
         for key in ("p_home", "p_draw", "p_away", "home_imp", "away_imp"):
@@ -376,7 +444,10 @@ class TestWebController(unittest.TestCase):
 
         # 1. Invariants calendrier et statut d'avancement.
         self.assertTrue(data.check(played=played_81, remaining=nov25_and_rest))
-        progress = data.matchday_progress(n_played=len(played_81), n_remaining=len(nov25_and_rest))
+        progress = data.matchday_progress(
+            n_played=len(played_81), n_remaining=len(nov25_and_rest),
+            today=date(2026, 11, 24),
+        )
         self.assertEqual(progress["completed"], 4)
         self.assertEqual(progress["in_progress"], 5)
         self.assertEqual(progress["played_in_current"], 9)
@@ -423,7 +494,8 @@ class TestWebController(unittest.TestCase):
             self.assertEqual(sum(m["matchday"] == 6 for m in schedule["remaining"]), 18)
 
             # 5. Libellé dynamique et rendu des visuels sans erreur.
-            self.assertIn("journée 5 en cours (9/18)", visualization._matchday_date_label(sim))
+            with patch.object(data, "today_date", return_value=date(2026, 11, 24)):
+                self.assertIn("journée 5 en cours (9/18)", visualization._matchday_date_label(sim))
             visualization.team_card("Arsenal", sim, table, tmp_dir / "arsenal.png")
             visualization.team_points_card("PSG", sim, table, tmp_dir / "psg_pts.png")
             visualization.overview(sim, table, tmp_dir / "overview.png")
